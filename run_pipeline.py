@@ -61,9 +61,11 @@ print(f"  → {len(timetable):,} episodes for {timetable['vehicle_id'].nunique()
 
 # ── Step 4a: Discharge profile ─────────────────────────────────────────────
 print("\n[Step 4] Building discharge profile...")
+
 timetable_df = pd.read_parquet(os.path.join(OUTPUT_DIR, "vehicle_timetable.parquet"))
 discharge_df = build_discharge_profile(timetable_df)
 discharge_df.to_parquet(os.path.join(OUTPUT_DIR, "discharge_profile.parquet"))
+
 print(f"  → {discharge_df['vehicle_id'].nunique():,} vehicles | "
       f"{discharge_df['energy_consumed_kWh'].sum():.1f} kWh total consumed")
 

@@ -1,13 +1,16 @@
+# ── Data (never commit raw or processed data) ──────────────────────────────
 data/
+
+# ── Outputs (auto-generated at runtime) ────────────────────────────────────
 output/
-*.parquet
-*.zip
-*.xml
-*.xml.gz
-*.csv
-__pycache__/
-*.pyc
-.env
-*.xlsx
+
+# ── Config (machine-specific paths, never commit) ──────────────────────────
 config.yaml
-*.Identifier
+
+# ── Python cache (auto-generated, useless in git) ──────────────────────────
+__pycache__/
+*.py[cod]
+
+
+# ── Virtual environments ────────────────────────────────────────────────────
+.venv/

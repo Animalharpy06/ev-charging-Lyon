@@ -12,7 +12,7 @@ import pandas as pd                        # Pandas library (nicknamed pd), whic
 
 @dataclass
 class Link:                     # Create the Link class
-    link_id: str()              # Unique ID of the link
+    link_id: str              # Unique ID of the link
     from_node: str
     to_node: str
     length_m: float             # Length of this link in metres

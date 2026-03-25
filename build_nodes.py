@@ -119,9 +119,7 @@ def build_node_mapping(
     if "activity_type" not in parking.columns:
         parking["activity_type"] = None
 
-    assignments_df = parking[
-        ["vehicle_id", "node_id", "slot_start", "slot_end", "activity_type"]
-    ].reset_index(drop=True)
+    assignments_df = parking[["vehicle_id", "node_id", "slot_start", "slot_end", "activity_type"]].reset_index(drop=True)
     # reset_index(drop=True) resets the row numbers to 0,1,2,… and drop=True
     # discards the old index (which came from the filtered timetable and would
     # have gaps like 0, 3, 7, … making the file confusing to read).
@@ -138,11 +136,7 @@ def build_node_mapping(
     # Step A: get the unique (node_id, link_id) pairs from the parking table.
     #   drop_duplicates("node_id") keeps only the first occurrence of each node,
     #   which is all we need since node_id == link_id for now.
-    unique_nodes = (
-        parking[["node_id", "link_id"]]
-        .drop_duplicates("node_id")
-        .copy()
-    )
+    unique_nodes = (parking[["node_id", "link_id"]].drop_duplicates("node_id").copy())
 
     # Step B: define two helper functions that look up x and y for a link_id.
     #
