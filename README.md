@@ -1,152 +1,186 @@
-# EV Fleet Smart Charging Optimization Pipeline
-
-This pipeline processes urban mobility simulation outputs (EQASim/MATSim) to
-optimize the smart charging of an electric vehicle (EV) fleet, integrating
-rooftop photovoltaic (PV) generation and time-varying electricity pricing.
-It minimizes the daily electricity cost of charging 1,129 EVs over a
-representative typical day.
-
----
-
-## Repository Structure
-
-ev-charging/
-├── data/ # Input data (NOT included in the repo — see below)
-
-├── output/ # Generated automatically at Runtime
-
-├── run_pipeline.py # Main entry point — runs all steps in sequence
-
-├── network_parser.py
-
-├── events_parser.py
-
-├── timetable_builder.py
-
-├── discharge_profile.py
-
-├── prepare_profiles.py
-
-├── optimize.py
-
-├── plot_results.py
-
-├── config.yaml # Your local config (NOT in repo — see below)
-
-├── config.yaml.example # Template for config.yaml
-
-├── requirements.txt
-
-└── README.md
+\# EV Charging Topology \& Optimisation Pipeline
 
 
----
 
-## Prerequisites
+PhD research project — University of Padova (UNIPD), Cohort XLI  
 
-### 1. Python environment
+\*\*Mattia Samorè\*\* | Energy Engineering
 
-Install all required packages:
 
+
+\---
+
+
+
+\## Overview
+
+
+
+This project develops a pipeline to reconstruct, validate and optimise the MV/LV
+
+electricity distribution network of Lyon (France) for urban electrification studies.
+
+The goal is to assess the hosting capacity of the grid and design smart-charging
+
+strategies for electric vehicles, heat pumps and rooftop PV systems that minimise
+
+grid reinforcement needs and lifecycle emissions.
+
+
+
+The pipeline processes open Enedis network data, reconstructs the physical topology
+
+of MV feeders, identifies source substations and builds a model suitable for
+
+linearised power-flow (DLPF) and mixed-integer optimisation (MILP/LP via Gurobi).
+
+
+
+\---
+
+
+
+\## Repository Structure
+
+src/
+
+├── electrical\_network/
+
+│ └── network.py # Load, clip, merge, classify and validate HTA lines
+
+├── topology/
+
+│ └── district.py # Define and load the study district from IRIS zones
+
+└── run\_topology\_check.py # Orchestrator: build and visualise the MV network
+
+
+
+`data/`, `cache/` and `output/` are not tracked in this repository.  
+
+See each subfolder for instructions on the expected input files.
+
+
+
+\---
+
+
+
+\## Data
+
+
+
+All input files go in `data/`. They are not tracked in this repository.
+
+
+
+\### Required files
+
+
+
+| File | Description | Format |
+
+|---|---|---|
+
+| `data/electrical\_network/enedis\_nrj\_energie.enedis\_poste.json` | Enedis MV/LV substations — Métropole de Lyon | GeoJSON, EPSG:4326 |
+
+| `data/electrical\_network/enedis\_nrj\_energie.enedis\_reseau.json` | Enedis HTA network lines — Métropole de Lyon | GeoJSON, EPSG:4326 |
+
+| `data/topology/iris\_lyon.geojson` | IRIS zone boundaries — Métropole de Lyon | GeoJSON |
+
+
+
+\### Download instructions
+
+
+
+\*\*Enedis substations\*\*  
+
+👉 https://data.grandlyon.com/portail/fr/jeux-de-donnees/postes-electriques-enedis-sur-le-territoire-de-la-metropole/donnees  
+
+Download as GeoJSON. Place in `data/electrical\_network/`.
+
+
+
+\*\*Enedis HTA network lines\*\*  
+
+👉 https://data.grandlyon.com/portail/fr/jeux-de-donnees/reseaux-electriques-enedis-sur-le-territoire-de-la-metropole/donnees  
+
+Download as GeoJSON. Place in `data/electrical\_network/`.
+
+
+
+\*\*IRIS zone boundaries\*\*  
+
+👉 https://www.data.gouv.fr/datasets/contours-iris-grande-echelle-de-la-metropole-de-lyon  
+
+Download as GeoJSON. Place in `data/topology/`.
+
+
+
+\---
+
+
+
+\## Dependencies
+
+
+
+\- Python 3.12
+
+\- `geopandas`, `shapely`, `matplotlib`
+
+\- `scipy` (spatial indexing for topology merging)
+
+\- `gurobipy` (optimisation stage, requires licence)
+
+
+
+Install dependencies:
+
+
+
+```bash
 
 pip install -r requirements.txt
-A working Gurobi installation with a valid license is required for Step 5
-(optimization). Academic licenses are available for free at
-gurobi.com.
 
-### 2. EQASim/MATSim simulation outputs
-The pipeline reads four files produced by an EQASim/MATSim simulation run.
-These are not included in the repository and must be provided by the user.
-Place them (or point to them via config.yaml) in your local EQASim output folder:
+```
 
-File			Description
-output_network.xml.gz	Road network (nodes and links)
-output_events.xml.gz	Agent activity and trip events
-output_plans.xml.gz	Agent daily plans
-output_allVehicles.xml	Vehicle definitions
 
-### 3. Typical Days spreadsheet
-The solar irradiance and electricity price profiles are read from an Excel file:
 
-File			Description
-TypicalDays.xlsx	Hourly solar irradiance (W/m²) and electricity price (€/MWh)
-Place this file in your local data/ folder (path configured in config.yaml).
+\---
 
-### Configuration
-The pipeline uses a config.yaml file to define all machine-specific paths.
-This file is not tracked by Git (listed in .gitignore) because paths
-differ between machines.
 
-### Setup steps
 
-#### 1. Copy the example template
-cp config.yaml.example config.yaml
+\## Status
 
-#### 2. Open config.yaml and fill in your own paths. Uncomment the option that matches your setup and replace YOUR_USERNAME with your system username.
 
-### Folder Setup
-The output/ folder is created automatically when the pipeline runs.
-The data/ folder must be created manually and populated with the input files:
 
-mkdir -p data output
-Then place TypicalDays.xlsx inside data/
+\- \[x] District definition and IRIS clipping  
 
-Running the Pipeline:
-python3 run_pipeline.py
+\- \[x] MV feeder loading, merging and topology validation  
 
-All intermediate and final results are saved as .parquet files in the
-output/ folder.
+\- \[x] Orphan endpoint detection and network visualisation  
 
-## Pipeline Overview
-All steps are orchestrated sequentially by run_pipeline.py.
+\- \[ ] HV/MV source substation integration  
 
-### Step 1 — Network Parser (network_parser.py)
-Parses the MATSim road network and builds a link-length lookup table.
-Output: output/network_links.parquet
+\- \[ ] Power flow model (DLPF)  
 
-### Step 2 — Events Parser (events_parser.py)
-Parses agent-level trip and activity events from the MATSim output.
-Output: output/trips_raw.parquet, output/activities_raw.parquet
+\- \[ ] Smart charging optimisation (MILP)  
 
-### Step 3 — Timetable Builder (timetable_builder.py)
-Builds a per-vehicle daily timetable of driving and parking episodes.
-Output: output/vehicle_timetable.parquet
 
-### Step 4a — Discharge Profile (discharge_profile.py)
-Converts the vehicle timetable into a 96-slot (15-min resolution) energy
-consumption and parking availability profile for each vehicle.
 
-Parameter	Value
-Slot duration	900 s (15 min)
-Slots per day	96
-EV efficiency	0.15 kWh/km
-Battery capacity 60 kWh
-Output: output/discharge_profile.parquet
+\---
 
-### Step 4b — Input Profiles (prepare_profiles.py)
-Interpolates hourly solar irradiance and electricity price data from
-TypicalDays.xlsx onto the 96-slot resolution using slot-average
-interpolation (4 sub-samples per slot).
-Output: output/input_profiles.parquet
 
-### Step 5 — Gurobi LP Optimization (optimize.py)
-Solves a linear programming model to find the cost-optimal charging
-schedule for the entire fleet over one representative day.
 
-Objective
-Minimize total daily grid electricity cost [€]:
+\## Acknowledgements
 
-min∑t(Pimp[t]⋅cbuy[t]−Pexp[t]⋅csell)⋅Δt
 
-Output: output/optimization_results.parquet, output/soc_results.parquet
 
-### Step 6 — Result Visualization (plot_results.py)
-Generates plots of the optimized charging schedule, SOC profiles, and
-grid import/export curves.
+This research is carried out within the PhD programme in Industrial Engineering
 
-## Notes
-config.yaml is machine-specific and must never be committed to Git.
+at the University of Padova, with focus on urban transport electrification and
 
-The output/ folder is also excluded from Git (auto-generated at runtime).
+energy system integration.
 
-Gurobi must be activated on your machine before running Step 5.

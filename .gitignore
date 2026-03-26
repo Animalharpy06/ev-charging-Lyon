@@ -12,6 +12,7 @@ data/**/*
 *:Zone.Identifier
 
 # Python artefacts
+.vscode/
 __pycache__/
 *.pyc
 *.pyo
