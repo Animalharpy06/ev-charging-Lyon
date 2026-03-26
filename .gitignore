@@ -1,11 +1,20 @@
+# Generated outputs — never commit
+output/
+cache/
+
+# Data files — keep folder structure but not the files
+data/**/*
+!data/**/
+!data/**/.gitkeep
+
+# Windows Zone.Identifier files (WSL artefact)
+*.Identifier
+*:Zone.Identifier
+
+# Python artefacts
 __pycache__/
 *.pyc
-
-data/
-cache/
-output/
-
-.venv/
-venv/
+*.pyo
+*.pyd
 .env
-.vscode/
+EOF
