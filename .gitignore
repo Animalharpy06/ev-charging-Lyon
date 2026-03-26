@@ -1,16 +1,18 @@
-# ── Data (never commit raw or processed data) ──────────────────────────────
+# Cache (Intermediate Resuls)
+cache/
+
+# Data (never commit raw or processed data)
 data/
 
-# ── Outputs (auto-generated at runtime) ────────────────────────────────────
+# Outputs (auto-generated at runtime)
 output/
 
-# ── Config (machine-specific paths, never commit) ──────────────────────────
+# Config (machine-specific paths, never commit)
 config.yaml
 
-# ── Python cache (auto-generated, useless in git) ──────────────────────────
+# Python cache (auto-generated, useless in git) 
 __pycache__/
 *.py[cod]
 
-
-# ── Virtual environments ────────────────────────────────────────────────────
-.venv/
+# VS Code
+.vscode
