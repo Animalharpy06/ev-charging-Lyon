@@ -2,7 +2,7 @@ import networkx as nx
 import geopandas as gpd
 from shapely.geometry import Point
 
-from electrical_network.network import SNAP_THRESHOLD_SUBSTATION_M
+_SUBSTATION_NODE_TOLERANCE_M = 1.0
 
 
 # ── Building ──────────────────────────────────────────────────────────────────
@@ -35,22 +35,14 @@ def build_graph_from_snapping(
 def _tag_substation_nodes(G: nx.Graph, substations: gpd.GeoDataFrame) -> None:
     for node in G.nodes:
         pt             = Point(node)
-        is_substation  = substations.geometry.distance(pt).min() <= SNAP_THRESHOLD_SUBSTATION_M
+        is_substation  = substations.geometry.distance(pt).min() <= _SUBSTATION_NODE_TOLERANCE_M
         G.nodes[node]["is_MV-LV_substation"] = is_substation
-
-
-# ── Pruning ───────────────────────────────────────────────────────────────────
-
-def _component_has_substation(G: nx.Graph, component: set) -> bool:
-    return any(G.nodes[node]["is_MV-LV_substation"] for node in component)
 
 
 # ── Reporting ─────────────────────────────────────────────────────────────────
 
 def report_graph_topology(G: nx.Graph, district_boundary: gpd.GeoDataFrame) -> None:
-    polygon    = district_boundary.to_crs("EPSG:2154").geometry.iloc[0]
     components = list(nx.connected_components(G))
-    islands    = [c for c in components if not _component_has_substation(G, c)]
 
     substation_nodes = [n for n, d in G.nodes(data=True) if d.get("is_MV-LV_substation")]
 
@@ -58,7 +50,6 @@ def report_graph_topology(G: nx.Graph, district_boundary: gpd.GeoDataFrame) -> N
     print(f"Edges:                {G.number_of_edges()}")
     print(f"Connected components: {len(components)}")
     print(f"Substation nodes:     {len(substation_nodes)}")
-    print(f"Islands:              {len(islands)} ({sum(len(c) for c in islands)} nodes total)")
 
 
 # ── Export ────────────────────────────────────────────────────────────────────
@@ -71,6 +62,6 @@ def graph_edges_to_geodataframe(
         data["geometry"]
         for _, _, data in G.edges(data=True)
         if "geometry" in data
-        and (category is None or data.get("category") == category)
-    ]
+        and (category is None or data.get("category") == category)]
+    
     return gpd.GeoDataFrame(geometry=edges, crs="EPSG:2154").to_crs("EPSG:4326")

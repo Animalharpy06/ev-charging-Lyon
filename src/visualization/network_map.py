@@ -34,7 +34,7 @@ def _plot_hta_lines(ax,
                     hta_lines: gpd.GeoDataFrame) -> None:
     
     internal = graph_edges_to_geodataframe(G, category="internal")
-    boundary = graph_edges_to_geodataframe(G, category="boundary")
+    boundary = hta_lines[hta_lines["category"] == "boundary"].to_crs("EPSG:4326")
     orphan   = hta_lines[hta_lines["category"] == "orphan"].to_crs("EPSG:4326")
 
     internal.plot(ax=ax, color="steelblue", linewidth=0.5,label=f"Internal HTA lines ({len(internal)})")
