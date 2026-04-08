@@ -3,6 +3,7 @@ import geopandas as gpd
 from shapely.geometry import Point
 
 _SUBSTATION_NODE_TOLERANCE_M = 1.0
+_HV_MV_CABIN_DEGREE_THRESHOLD = 10
 
 
 # ── Building ──────────────────────────────────────────────────────────────────
@@ -12,6 +13,7 @@ def build_graph_from_snapping(
     endpoint_nodes: dict[tuple[int, str], tuple[float, float]],
     substations: gpd.GeoDataFrame,
 ) -> nx.Graph:
+    
     lines_proj       = lines.to_crs("EPSG:2154")
     substations_proj = substations.to_crs("EPSG:2154")
 
@@ -28,15 +30,35 @@ def build_graph_from_snapping(
         category = row.get("category", "unknown")
         G.add_edge(start_key, end_key, geometry=row.geometry, category=category)
 
-    _tag_substation_nodes(G, substations_proj)
+    _tag_nodes(G, substations_proj)
+    
+    G = _drop_unconnected_islands(G)
+
     return G
 
 
-def _tag_substation_nodes(G: nx.Graph, substations: gpd.GeoDataFrame) -> None:
+def _tag_nodes(G: nx.Graph, substations: gpd.GeoDataFrame) -> None:
     for node in G.nodes:
+
         pt             = Point(node)
-        is_substation  = substations.geometry.distance(pt).min() <= _SUBSTATION_NODE_TOLERANCE_M
-        G.nodes[node]["is_MV-LV_substation"] = is_substation
+        G.nodes[node]["is_MV-LV_substation"] = substations.geometry.distance(pt).min() <= _SUBSTATION_NODE_TOLERANCE_M
+        G.nodes[node]["is_HV-MV_cabin"]      = G.degree(node) >= _HV_MV_CABIN_DEGREE_THRESHOLD
+        G.nodes[node]["is_junction"]          = (
+            not G.nodes[node]["is_MV-LV_substation"]
+            and not G.nodes[node]["is_HV-MV_cabin"]
+            and G.degree(node) >= 2)
+
+def _drop_unconnected_islands(G: nx.Graph) -> nx.Graph:
+    safe_nodes = {
+        node
+        for component in nx.connected_components(G)
+        if _component_has_hv_mv_cabin(G, component)
+        for node in component
+    }
+    return G.subgraph(safe_nodes).copy()
+
+def _component_has_hv_mv_cabin(G: nx.Graph, component: set) -> bool:
+    return any(G.nodes[node]["is_HV-MV_cabin"] for node in component)
 
 
 # ── Reporting ─────────────────────────────────────────────────────────────────
@@ -44,12 +66,14 @@ def _tag_substation_nodes(G: nx.Graph, substations: gpd.GeoDataFrame) -> None:
 def report_graph_topology(G: nx.Graph, district_boundary: gpd.GeoDataFrame) -> None:
     components = list(nx.connected_components(G))
 
-    substation_nodes = [n for n, d in G.nodes(data=True) if d.get("is_MV-LV_substation")]
+    MV_LV_substations = [n for n, d in G.nodes(data=True) if d.get("is_MV-LV_substation")]
+    HV_MV_substations = [n for n, d in G.nodes(data=True) if d.get("is_HV-MV_cabin")]
 
     print(f"Nodes:                {G.number_of_nodes()}")
     print(f"Edges:                {G.number_of_edges()}")
     print(f"Connected components: {len(components)}")
-    print(f"Substation nodes:     {len(substation_nodes)}")
+    print(f"MV/LV Substations:     {len(MV_LV_substations)}")
+    print(f"HV/MV Substations:     {len(HV_MV_substations)}")
 
 
 # ── Export ────────────────────────────────────────────────────────────────────

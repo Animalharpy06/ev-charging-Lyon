@@ -29,7 +29,7 @@ def run_topology_check() -> None:
     G = build_graph_from_snapping(hta_lines_district, endpoint_nodes, substations_district)
     report_graph_topology(G, district_boundary)
 
-    plot_network(district, district_boundary, G, hta_lines_district,substations_district, junction_nodes, orphans)
+    plot_network(district, district_boundary, G)
 
 
 if __name__ == "__main__":

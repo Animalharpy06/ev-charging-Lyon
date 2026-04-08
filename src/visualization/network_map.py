@@ -2,6 +2,7 @@ import matplotlib.pyplot as plt
 from pathlib import Path
 import geopandas as gpd
 import networkx as nx
+from shapely.geometry import Point
 
 from electrical_network.graph import graph_edges_to_geodataframe
 
@@ -9,19 +10,16 @@ from electrical_network.graph import graph_edges_to_geodataframe
 def plot_network(
     district: gpd.GeoDataFrame,
     district_boundary: gpd.GeoDataFrame,
-    G: nx.Graph,
-    hta_lines: gpd.GeoDataFrame,
-    substations: gpd.GeoDataFrame,
-    junction_nodes: gpd.GeoDataFrame,
-    orphan_points: gpd.GeoDataFrame,) -> None:
+    G: nx.Graph
+    ) -> None:
 
     fig, ax = plt.subplots(figsize=(12, 12))
 
     district.plot(ax=ax, color="lightyellow", edgecolor="gray", linewidth=0.5)
     district_boundary.plot(ax=ax, color="none", edgecolor="black", linewidth=1.5)
 
-    _plot_hta_lines(ax, G, hta_lines)
-    _plot_points(ax, substations, junction_nodes, orphan_points)
+    _plot_lines(ax, G)
+    _plot_points(ax, G)
 
     ax.set_title("Quartier 5 — HTA Network", fontsize=14)
     ax.legend()
@@ -29,36 +27,32 @@ def plot_network(
     _save_figure("output/topology_check/network_map.png")
 
 
-def _plot_hta_lines(ax, 
-                    G: nx.Graph,
-                    hta_lines: gpd.GeoDataFrame) -> None:
+def _plot_lines(ax, 
+                G: nx.Graph) -> None:
     
     internal = graph_edges_to_geodataframe(G, category="internal")
-    boundary = hta_lines[hta_lines["category"] == "boundary"].to_crs("EPSG:4326")
-    orphan   = hta_lines[hta_lines["category"] == "orphan"].to_crs("EPSG:4326")
+    internal.plot(ax=ax, color="steelblue", linewidth=0.1,label=f"Internal HTA lines ({len(internal)})")
 
-    internal.plot(ax=ax, color="steelblue", linewidth=0.5,label=f"Internal HTA lines ({len(internal)})")
-    if not boundary.empty:
-        boundary.plot(ax=ax, color="green", linewidth=0.5,label=f"Boundary HTA lines ({len(boundary)})")
-    if not orphan.empty:
-        orphan.plot(ax=ax, color="gold", linewidth=0.5,label=f"Orphan lines ({len(orphan)})")
 
 
 def _plot_points(
     ax,
-    substations: gpd.GeoDataFrame,
-    junction_nodes: gpd.GeoDataFrame,
-    orphan_points: gpd.GeoDataFrame,
+    G: nx.Graph
 ) -> None:
-    substations.plot(ax=ax, color="red", markersize=5,
-                     label=f"Substations ({len(substations)})")
-    if not junction_nodes.empty:
-        junction_nodes.plot(ax=ax, color="purple", markersize=8, marker="^",
-                            label=f"Junction nodes ({len(junction_nodes)})")
-    orphan_points.plot(ax=ax, color="orange", marker="x", markersize=10,
-                       linewidth=1, zorder=6,
-                       label=f"Orphan endpoints ({len(orphan_points)})")
+    
+    substations   = nodes_to_geodataframe(G, filter_key="is_MV-LV_substation")
+    hv_mv_cabins  = nodes_to_geodataframe(G, filter_key="is_HV-MV_cabin")
+    junction_nodes = nodes_to_geodataframe(G, filter_key="is_junction")
 
+    substations.plot(ax=ax, color="red", markersize=1, label=f"Substations ({len(substations)})")
+    hv_mv_cabins.plot(ax=ax, color="orange", markersize=1, marker="*", label=f"HV/MV cabins ({len(hv_mv_cabins)})")
+    junction_nodes.plot(ax=ax, color="purple", markersize=1, marker="^",label=f"Junction nodes ({len(junction_nodes)})")
+
+
+
+def nodes_to_geodataframe(G: nx.Graph, filter_key: str) -> gpd.GeoDataFrame:
+    points = [Point(n) for n, d in G.nodes(data=True) if d.get(filter_key)]
+    return gpd.GeoDataFrame(geometry=points, crs="EPSG:2154").to_crs("EPSG:4326")
 
 def _save_figure(path: str) -> None:
     Path(path).parent.mkdir(parents=True, exist_ok=True)
