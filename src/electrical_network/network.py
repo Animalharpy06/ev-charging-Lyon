@@ -3,6 +3,7 @@ import geopandas as gpd
 from pathlib import Path
 from shapely.geometry import Point, Polygon, LineString
 from shapely.strtree import STRtree
+from typing import cast
 
 SNAP_THRESHOLD_SUBSTATION_M = 5   
 SNAP_THRESHOLD_JUNCTION_M   = 20  
@@ -24,16 +25,14 @@ def load_hta_lines(path: str) -> gpd.GeoDataFrame:
 
 def clip_substations_to_district(substations: gpd.GeoDataFrame,
                                   district_boundary: gpd.GeoDataFrame) -> gpd.GeoDataFrame:
-    return (gpd.sjoin(substations, district_boundary[["geometry"]],
-                      how="inner", predicate="within")
-              .drop(columns="index_right"))
+    
+    return (gpd.sjoin(substations, district_boundary[["geometry"]],how="inner", predicate="within").drop(columns="index_right"))
 
 
 def clip_lines_to_district(lines: gpd.GeoDataFrame,
-                            district_boundary: gpd.GeoDataFrame) -> gpd.GeoDataFrame:
-    # Full geometry preserved — lines are not cut at the boundary,
-    # because boundary lines represent real feeders connecting to upstream nodes.
-    boundary_polygon = district_boundary.geometry.iloc[0]
+                           district_boundary: gpd.GeoDataFrame) -> gpd.GeoDataFrame:
+    
+    boundary_polygon = cast(Polygon, district_boundary.geometry.iloc[0])
     has_endpoint_inside = lines.geometry.apply(lambda line: _any_endpoint_inside(line, boundary_polygon))
     return lines[has_endpoint_inside].copy()
 
@@ -45,16 +44,15 @@ def _any_endpoint_inside(line_geom, polygon: Polygon) -> bool:
 
 # ── Endpoint snapping ─────────────────────────────────────────────────────────
 
-def build_endpoint_snapping(
-    lines: gpd.GeoDataFrame,
-    substations: gpd.GeoDataFrame,
-    district_boundary: gpd.GeoDataFrame,
-) -> tuple[gpd.GeoDataFrame, dict, gpd.GeoDataFrame, gpd.GeoDataFrame]:
+def build_endpoint_snapping(lines: gpd.GeoDataFrame,
+                            substations: gpd.GeoDataFrame,
+                            district_boundary: gpd.GeoDataFrame) -> tuple[gpd.GeoDataFrame, dict, gpd.GeoDataFrame, gpd.GeoDataFrame]:
+
     """
     Assigns a node key to every line endpoint inside the district.
  
-    Phase 1 — detect orphan endpoints and split any host line at T-junctions.
-    Phase 2 — rebuild endpoint_nodes fresh on the updated (split) lines.
+    Phase 1 — Snap endpoints to substations, then detect orphan endpoints and split any line at T-junctions where endpoints are present.
+    Phase 2 — Rebuild endpoint_nodes fresh on the updated (split) lines.
  
     Returns
     -------
@@ -65,21 +63,20 @@ def build_endpoint_snapping(
     """
     lines_proj       = lines.to_crs("EPSG:2154")
     substations_proj = substations.to_crs("EPSG:2154")
-    polygon          = district_boundary.to_crs("EPSG:2154").geometry.iloc[0]
+    polygon = cast(Polygon, district_boundary.to_crs("EPSG:2154").geometry.iloc[0])
  
     lines_proj = _phase1_split_t_junctions(lines_proj, substations_proj, polygon)
     lines_proj = lines_proj.reset_index(drop=True)
  
-    endpoint_nodes, junction_nodes, orphan_points = _phase2_build_nodes(
-        lines_proj, substations_proj, polygon
-    )
+    endpoint_nodes, junction_nodes, orphan_points = _phase2_build_nodes(lines_proj, substations_proj, polygon)
  
     return lines_proj.to_crs("EPSG:4326"), endpoint_nodes, junction_nodes, orphan_points
 
-def _phase1_split_t_junctions(
-    lines_proj: gpd.GeoDataFrame,
-    substations_proj: gpd.GeoDataFrame,
-    polygon: Polygon) -> gpd.GeoDataFrame:
+
+
+def _phase1_split_t_junctions(lines_proj: gpd.GeoDataFrame,
+                              substations_proj: gpd.GeoDataFrame,
+                              polygon: Polygon) -> gpd.GeoDataFrame:
 
     inside_endpoints      = _collect_inside_endpoints(lines_proj, polygon)
     _, unsnapped          = _snap_to_substations(inside_endpoints, substations_proj)
@@ -91,31 +88,24 @@ def _phase1_split_t_junctions(
     return lines_proj
  
  
-def _phase2_build_nodes(
-    lines_proj: gpd.GeoDataFrame,
-    substations_proj: gpd.GeoDataFrame,
-    polygon: Polygon) -> tuple[dict, gpd.GeoDataFrame, gpd.GeoDataFrame]:
+def _phase2_build_nodes(lines_proj: gpd.GeoDataFrame,
+                        substations_proj: gpd.GeoDataFrame,
+                        polygon: Polygon) -> tuple[dict, gpd.GeoDataFrame, gpd.GeoDataFrame]:
 
     inside_endpoints           = _collect_inside_endpoints(lines_proj, polygon)
     endpoint_nodes, unsnapped  = _snap_to_substations(inside_endpoints, substations_proj)
     junction_keys, final_orphans = _cluster_unsnapped(unsnapped, substations_proj)
     endpoint_nodes.update(junction_keys)
  
-    junction_nodes = _to_geodataframe(
-        [Point(xy) for xy in set(junction_keys.values())], crs="EPSG:2154"
-    ).to_crs("EPSG:4326")
+    junction_nodes = _to_geodataframe([Point(xy) for xy in set(junction_keys.values())], crs="EPSG:2154").to_crs("EPSG:4326")
  
-    orphan_points = _to_geodataframe(
-        list(final_orphans.values()), crs="EPSG:2154"
-    ).to_crs("EPSG:4326")
+    orphan_points = _to_geodataframe(list(final_orphans.values()), crs="EPSG:2154").to_crs("EPSG:4326")
  
     return endpoint_nodes, junction_nodes, orphan_points
  
 
-
-def _collect_inside_endpoints(
-    lines: gpd.GeoDataFrame,
-    polygon: Polygon,) -> list[tuple[int, str, Point]]:
+def _collect_inside_endpoints(lines: gpd.GeoDataFrame,
+                              polygon: Polygon,) -> list[tuple[int, str, Point]]:
 
     result = []
     for idx, geom in lines.geometry.items():
@@ -137,7 +127,7 @@ def _snap_to_substations(
 
     for line_idx, side, point in inside_endpoints:
         nearest_idx = substation_tree.nearest(point)
-        nearest_pt  = substations_proj.geometry.iloc[nearest_idx]
+        nearest_pt  = cast(Point, substations_proj.geometry.iloc[nearest_idx])
         candidate_key = _round_coords(nearest_pt)
         
 
@@ -151,18 +141,18 @@ def _snap_to_substations(
  
     return endpoint_nodes, unsnapped
 
-def _already_snapped_to_same_node(
-    line_idx: int,
-    side: str,
-    candidate_key: tuple[float, float],
-    endpoint_nodes: dict,) -> bool:
+def _already_snapped_to_same_node(line_idx: int,
+                                  side: str,
+                                  candidate_key: tuple[float, float],
+                                  endpoint_nodes: dict,) -> bool:
+    
     other_side = "end" if side == "start" else "start"
     return endpoint_nodes.get((line_idx, other_side)) == candidate_key
 
 
-def _cluster_unsnapped(
-    unsnapped: list[tuple[int, str, Point]],
-    substations_proj: gpd.GeoDataFrame,) -> tuple[dict, dict]:
+def _cluster_unsnapped(unsnapped: list[tuple[int, str, Point]],
+                       substations_proj: gpd.GeoDataFrame,) -> tuple[dict, dict]:
+    
     substation_tree = STRtree(substations_proj.geometry)
     filtered = [(line_idx, side, pt) for line_idx, side, pt in unsnapped if not _near_substation(pt, substation_tree)]
 
@@ -196,6 +186,7 @@ def _cluster_unsnapped(
     i=3, pt=D: buffer finds nothing → no unions
 
     Final parent = [1, 2, 2, 3]
+    This tells the next step where to look in the array to find the parent of the node you look at.
     """
 
     clusters: dict[int, list[int]] = {}
@@ -203,6 +194,8 @@ def _cluster_unsnapped(
         clusters.setdefault(_find(parent,i), []).append(i)
 
     """
+    Find parent = For position 0 look at position 1, which will send you to position 2. 
+    Position 2 points to himself so it is the parent
     i=0: _find(parent, 0) → parent[0]=1, parent[1]=2, parent[2]=2 ✓ → root=2 → clusters = {2: [0]}
 
     i=1: _find(parent, 1) → parent[1]=2, parent[2]=2 ✓ → root=2 → clusters = {2: [0, 1]}
@@ -297,15 +290,11 @@ def _split_line(line_geom, split_point: Point) -> tuple:
     return seg_a, seg_b
 
 
-
 # ── Classification ────────────────────────────────────────────────────────────
 
-def classify_lines(
-    lines: gpd.GeoDataFrame,
-    endpoint_nodes: dict[tuple[int, str], tuple[float, float]],
-    district_boundary: gpd.GeoDataFrame,
-) -> gpd.GeoDataFrame:
-    
+def classify_lines(lines: gpd.GeoDataFrame,
+                   endpoint_nodes: dict[tuple[int, str], tuple[float, float]],
+                   district_boundary: gpd.GeoDataFrame) -> gpd.GeoDataFrame:
     """
     Classify each line using endpoint_nodes as the single source of truth:
       - boundary : at least one endpoint outside the district
@@ -313,47 +302,29 @@ def classify_lines(
       - orphan   : both endpoints inside but at least one could not be resolved
     """
     lines_proj = lines.to_crs("EPSG:2154")
-    polygon    = district_boundary.to_crs("EPSG:2154").geometry.iloc[0]
+    polygon    = cast(Polygon, district_boundary.to_crs("EPSG:2154").geometry.iloc[0])
 
-    categories = [
-        _line_category(idx, geom, endpoint_nodes, polygon)
-        for idx, geom in lines_proj.geometry.items()
-    ]
+    categories = [_line_category(idx, geom, endpoint_nodes, polygon) for idx, geom in lines_proj.geometry.items()]
 
     lines = lines.copy()
     lines["category"] = categories
     return lines
 
 
-def _line_category(
-    idx: int,
-    geom,
-    endpoint_nodes: dict,
-    polygon: Polygon,
-) -> str:
+def _line_category(idx: int,
+                   geom,
+                   endpoint_nodes: dict,
+                   polygon: Polygon) -> str:
+    
     start, end   = _endpoints(geom)
     start_inside = polygon.contains(start)
     end_inside   = polygon.contains(end)
 
-    if not (start_inside and end_inside):
+    if not start_inside or not end_inside:
         return "boundary"
     if (idx, "start") in endpoint_nodes and (idx, "end") in endpoint_nodes:
         return "internal"
     return "orphan"
-
-
-# ── Validation ────────────────────────────────────────────────────────────────
-
-def check_orphan_endpoints(
-    lines: gpd.GeoDataFrame,
-    substations: gpd.GeoDataFrame,
-    district_boundary: gpd.GeoDataFrame,
-) -> gpd.GeoDataFrame:
-    """Convenience wrapper — runs the full snapping pipeline and returns only orphan points."""
-    _, _, _, orphan_points = build_endpoint_snapping(lines, substations, district_boundary)
-    print(f"Orphan endpoints inside district: {len(orphan_points)}")
-    return orphan_points
-
 
 # ── Saving ────────────────────────────────────────────────────────────────────
 
@@ -361,22 +332,18 @@ def save(gdf: gpd.GeoDataFrame, output_path: str) -> None:
     Path(output_path).parent.mkdir(parents=True, exist_ok=True)
     gdf.to_file(output_path, driver="GeoJSON")
 
-
 # ── Helpers ───────────────────────────────────────────────────────────────────
 
 def _endpoints(geom) -> tuple[Point, Point]:
     return Point(geom.coords[0]), Point(geom.coords[-1])
 
-
 def _round_coords(point: Point) -> tuple[float, float]:
     return (round(point.x, 0), round(point.y, 0))
-
 
 def _centroid_of_points(points: list[Point]) -> Point:
     x = sum(p.x for p in points) / len(points)
     y = sum(p.y for p in points) / len(points)
     return Point(x, y)
-
 
 def _to_geodataframe(points: list[Point], crs: str) -> gpd.GeoDataFrame:
     return gpd.GeoDataFrame(geometry=points, crs=crs)

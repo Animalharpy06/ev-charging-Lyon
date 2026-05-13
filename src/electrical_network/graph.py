@@ -8,13 +8,11 @@ _HV_MV_CABIN_DEGREE_THRESHOLD = 10
 
 # ── Building ──────────────────────────────────────────────────────────────────
 
-def build_graph_from_snapping(
-    lines: gpd.GeoDataFrame,
-    endpoint_nodes: dict[tuple[int, str], tuple[float, float]],
-    substations: gpd.GeoDataFrame,
-) -> nx.Graph:
+def build_graph_from_snapping(lines: gpd.GeoDataFrame,
+                              endpoint_nodes: dict[tuple[int, str], tuple[float, float]],
+                              substations: gpd.GeoDataFrame) -> nx.Graph:
     
-    lines_proj       = lines.to_crs("EPSG:2154")
+    lines_proj = lines.to_crs("EPSG:2154")
     substations_proj = substations.to_crs("EPSG:2154")
 
     G = nx.Graph()
@@ -38,23 +36,19 @@ def build_graph_from_snapping(
 
 
 def _tag_nodes(G: nx.Graph, substations: gpd.GeoDataFrame) -> None:
+    
     for node in G.nodes:
-
-        pt             = Point(node)
+        pt = Point(node)
         G.nodes[node]["is_MV-LV_substation"] = substations.geometry.distance(pt).min() <= _SUBSTATION_NODE_TOLERANCE_M
-        G.nodes[node]["is_HV-MV_cabin"]      = G.degree(node) >= _HV_MV_CABIN_DEGREE_THRESHOLD
-        G.nodes[node]["is_junction"]          = (
-            not G.nodes[node]["is_MV-LV_substation"]
-            and not G.nodes[node]["is_HV-MV_cabin"]
-            and G.degree(node) >= 2)
+        G.nodes[node]["is_HV-MV_cabin"] = G.degree(node) >= _HV_MV_CABIN_DEGREE_THRESHOLD
+        G.nodes[node]["is_junction"] = (not G.nodes[node]["is_MV-LV_substation"] 
+                                        and not G.nodes[node]["is_HV-MV_cabin"] 
+                                        and G.degree(node) >= 2)
 
 def _drop_unconnected_islands(G: nx.Graph) -> nx.Graph:
-    safe_nodes = {
-        node
-        for component in nx.connected_components(G)
-        if _component_has_hv_mv_cabin(G, component)
-        for node in component
-    }
+    safe_nodes = {node for component in nx.connected_components(G) 
+                  if _component_has_hv_mv_cabin(G, component) for node in component}
+    
     return G.subgraph(safe_nodes).copy()
 
 def _component_has_hv_mv_cabin(G: nx.Graph, component: set) -> bool:
@@ -63,7 +57,8 @@ def _component_has_hv_mv_cabin(G: nx.Graph, component: set) -> bool:
 
 # ── Reporting ─────────────────────────────────────────────────────────────────
 
-def report_graph_topology(G: nx.Graph, district_boundary: gpd.GeoDataFrame) -> None:
+def report_graph_topology(G: nx.Graph) -> None:
+
     components = list(nx.connected_components(G))
 
     MV_LV_substations = [n for n, d in G.nodes(data=True) if d.get("is_MV-LV_substation")]
@@ -78,14 +73,9 @@ def report_graph_topology(G: nx.Graph, district_boundary: gpd.GeoDataFrame) -> N
 
 # ── Export ────────────────────────────────────────────────────────────────────
 
-def graph_edges_to_geodataframe(
-    G: nx.Graph,
-    category: str = None,
-) -> gpd.GeoDataFrame:
-    edges = [
-        data["geometry"]
-        for _, _, data in G.edges(data=True)
-        if "geometry" in data
-        and (category is None or data.get("category") == category)]
+def graph_edges_to_geodataframe(G: nx.Graph, category: str) -> gpd.GeoDataFrame:
+    
+    edges = [data["geometry"] for _, _, data in G.edges(data=True) 
+             if "geometry" in data and (category is None or data.get("category") == category)]
     
     return gpd.GeoDataFrame(geometry=edges, crs="EPSG:2154").to_crs("EPSG:4326")

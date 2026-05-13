@@ -7,17 +7,13 @@ from shapely.geometry import Point
 from electrical_network.graph import graph_edges_to_geodataframe
 
 
-def plot_network(
-    district: gpd.GeoDataFrame,
-    district_boundary: gpd.GeoDataFrame,
-    G: nx.Graph
-    ) -> None:
+def plot_network(district: gpd.GeoDataFrame,
+                 district_boundary: gpd.GeoDataFrame,
+                 G: nx.Graph) -> None:
 
     fig, ax = plt.subplots(figsize=(12, 12))
-
-    district.plot(ax=ax, color="lightyellow", edgecolor="gray", linewidth=0.5)
-    district_boundary.plot(ax=ax, color="none", edgecolor="black", linewidth=1.5)
-
+    
+    _plot_district(ax, district, district_boundary)
     _plot_lines(ax, G)
     _plot_points(ax, G)
 
@@ -26,19 +22,21 @@ def plot_network(
 
     _save_figure("output/topology_check/network_map.png")
 
+# ── Plotting ──────────────────────────────────────────────────────────────────
 
-def _plot_lines(ax, 
-                G: nx.Graph) -> None:
+def _plot_district(ax,
+                   district: gpd.GeoDataFrame,
+                   district_boundary: gpd.GeoDataFrame) -> None:
+    
+    district.plot(ax=ax, color="lightyellow", edgecolor="gray", linewidth=0.5)
+    district_boundary.plot(ax=ax, color="none", edgecolor="black", linewidth=1.5)
+
+def _plot_lines(ax, G: nx.Graph) -> None:
     
     internal = graph_edges_to_geodataframe(G, category="internal")
     internal.plot(ax=ax, color="steelblue", linewidth=0.1,label=f"Internal HTA lines ({len(internal)})")
 
-
-
-def _plot_points(
-    ax,
-    G: nx.Graph
-) -> None:
+def _plot_points(ax,G: nx.Graph) -> None:
     
     substations   = nodes_to_geodataframe(G, filter_key="is_MV-LV_substation")
     hv_mv_cabins  = nodes_to_geodataframe(G, filter_key="is_HV-MV_cabin")
@@ -48,11 +46,11 @@ def _plot_points(
     hv_mv_cabins.plot(ax=ax, color="orange", markersize=1, marker="*", label=f"HV/MV cabins ({len(hv_mv_cabins)})")
     junction_nodes.plot(ax=ax, color="purple", markersize=1, marker="^",label=f"Junction nodes ({len(junction_nodes)})")
 
-
-
 def nodes_to_geodataframe(G: nx.Graph, filter_key: str) -> gpd.GeoDataFrame:
     points = [Point(n) for n, d in G.nodes(data=True) if d.get(filter_key)]
     return gpd.GeoDataFrame(geometry=points, crs="EPSG:2154").to_crs("EPSG:4326")
+
+# ── Saving ──────────────────────────────────────────────────────────────────
 
 def _save_figure(path: str) -> None:
     Path(path).parent.mkdir(parents=True, exist_ok=True)
