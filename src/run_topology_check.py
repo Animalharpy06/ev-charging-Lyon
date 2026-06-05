@@ -18,12 +18,12 @@ def run_topology_check() -> None:
     hta_lines = load_hta_lines("data/electrical_network/enedis_nrj_energie.enedis_reseau.json")
     hta_lines_district = clip_lines_to_district(hta_lines, district_boundaries)
 
-    hta_lines_district, endpoint_nodes, _,_ = build_endpoint_snapping(hta_lines_district, substations_district, district_boundaries)
+    hta_lines_district, endpoint_nodes, susbtation_node_coord, junction_node_coord, external_nodes_coord = build_endpoint_snapping(hta_lines_district, substations_district, district_boundaries)
 
     hta_lines_district = classify_lines(hta_lines_district, endpoint_nodes, district_boundaries)
     save(hta_lines_district, "cache/electrical_network/hta_lines_district.geojson")
 
-    G = build_graph_from_snapping(hta_lines_district, endpoint_nodes, substations_district)
+    G = build_graph_from_snapping(hta_lines_district, endpoint_nodes, susbtation_node_coord, junction_node_coord, substations_district, external_nodes_coord)
     report_graph_topology(G)
 
     plot_network(district, district_boundaries, G)

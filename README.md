@@ -162,7 +162,7 @@ pip install -r requirements.txt
 
 \- \[x] Orphan endpoint detection and network visualisation  
 
-\- \[ ] HV/MV source substation integration  
+\- \[X] HV/MV source substation integration  
 
 \- \[ ] Power flow model (DLPF)  
 

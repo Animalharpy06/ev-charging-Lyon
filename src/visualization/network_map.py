@@ -4,7 +4,7 @@ import geopandas as gpd
 import networkx as nx
 from shapely.geometry import Point
 
-from electrical_network.graph import graph_edges_to_geodataframe
+from electrical_network.graph import graph_edges_to_geodataframe, MV_LV_SUBSTATIONS, HV_MV_CABIN, JUNCTION, EXTERNAL_BOUNDARY
 
 
 def plot_network(district: gpd.GeoDataFrame,
@@ -35,16 +35,26 @@ def _plot_lines(ax, G: nx.Graph) -> None:
     
     internal = graph_edges_to_geodataframe(G, category="internal")
     internal.plot(ax=ax, color="steelblue", linewidth=0.1,label=f"Internal HTA lines ({len(internal)})")
+    boundary = graph_edges_to_geodataframe(G, category="boundary")
+    boundary.plot(ax=ax, color="orange", linewidth=0.1,label=f"Boundary HTA lines ({len(internal)})")
+    
 
 def _plot_points(ax,G: nx.Graph) -> None:
     
-    substations   = nodes_to_geodataframe(G, filter_key="is_MV-LV_substation")
-    hv_mv_cabins  = nodes_to_geodataframe(G, filter_key="is_HV-MV_cabin")
-    junction_nodes = nodes_to_geodataframe(G, filter_key="is_junction")
+    mv_lv_substations = nodes_to_geodataframe(G, filter_key=MV_LV_SUBSTATIONS)
+    hv_mv_cabins = nodes_to_geodataframe(G, filter_key=HV_MV_CABIN)
+    junction_nodes = nodes_to_geodataframe(G, filter_key=JUNCTION)
+    external_boundary_nodes = nodes_to_geodataframe(G, filter_key=EXTERNAL_BOUNDARY)
 
-    substations.plot(ax=ax, color="red", markersize=1, label=f"Substations ({len(substations)})")
-    hv_mv_cabins.plot(ax=ax, color="orange", markersize=1, marker="*", label=f"HV/MV cabins ({len(hv_mv_cabins)})")
-    junction_nodes.plot(ax=ax, color="purple", markersize=1, marker="^",label=f"Junction nodes ({len(junction_nodes)})")
+    if not mv_lv_substations.empty:
+        mv_lv_substations.plot(ax=ax, color="red", markersize=1, label=f"Substations ({len(mv_lv_substations)})")
+    if not hv_mv_cabins.empty:
+        hv_mv_cabins.plot(ax=ax, color="orange", markersize=1, marker="*", label=f"HV/MV cabins ({len(hv_mv_cabins)})")
+    if not junction_nodes.empty:
+        junction_nodes.plot(ax=ax, color="purple", markersize=1, marker="^",label=f"Junction nodes ({len(junction_nodes)})")
+    if not external_boundary_nodes.empty:
+        external_boundary_nodes.plot(ax=ax, color="green", markersize=1,label=f"External nodes ({len(external_boundary_nodes)})")
+
 
 def nodes_to_geodataframe(G: nx.Graph, filter_key: str) -> gpd.GeoDataFrame:
     points = [Point(n) for n, d in G.nodes(data=True) if d.get(filter_key)]

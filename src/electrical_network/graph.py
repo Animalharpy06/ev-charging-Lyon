@@ -2,15 +2,23 @@ import networkx as nx
 import geopandas as gpd
 from shapely.geometry import Point
 
-_SUBSTATION_NODE_TOLERANCE_M = 1.0
+
 _HV_MV_CABIN_DEGREE_THRESHOLD = 10
+MV_LV_SUBSTATIONS = "MV-LV_substation"
+HV_MV_CABIN = "HV-MV_cabin"
+JUNCTION = "Junction"
+EXTERNAL_BOUNDARY  = "external_boundary_node"
+
 
 
 # ── Building ──────────────────────────────────────────────────────────────────
 
 def build_graph_from_snapping(lines: gpd.GeoDataFrame,
-                              endpoint_nodes: dict[tuple[int, str], tuple[float, float]],
-                              substations: gpd.GeoDataFrame) -> nx.Graph:
+                              endpoint_nodes: dict,
+                              substation_nodes_keys: set,
+                              junction_nodes_keys: set,
+                              substations: gpd.GeoDataFrame,
+                              external_nodes_coord: set) -> nx.Graph:
     
     lines_proj = lines.to_crs("EPSG:2154")
     substations_proj = substations.to_crs("EPSG:2154")
@@ -28,31 +36,27 @@ def build_graph_from_snapping(lines: gpd.GeoDataFrame,
         category = row.get("category", "unknown")
         G.add_edge(start_key, end_key, geometry=row.geometry, category=category)
 
-    _tag_nodes(G, substations_proj)
+    _tag_nodes(G, substation_nodes_keys, junction_nodes_keys, external_nodes_coord)
     
-    G = _drop_unconnected_islands(G)
-
     return G
 
 
-def _tag_nodes(G: nx.Graph, substations: gpd.GeoDataFrame) -> None:
+def _tag_nodes(G: nx.Graph, 
+               substation_nodes_coord: set,
+               junction_nodes_coord: set,
+               external_nodes_coord:set) -> None:
     
     for node in G.nodes:
-        pt = Point(node)
-        G.nodes[node]["is_MV-LV_substation"] = substations.geometry.distance(pt).min() <= _SUBSTATION_NODE_TOLERANCE_M
-        G.nodes[node]["is_HV-MV_cabin"] = G.degree(node) >= _HV_MV_CABIN_DEGREE_THRESHOLD
-        G.nodes[node]["is_junction"] = (not G.nodes[node]["is_MV-LV_substation"] 
-                                        and not G.nodes[node]["is_HV-MV_cabin"] 
-                                        and G.degree(node) >= 2)
+        is_sub = node in substation_nodes_coord
+        is_junc = node in junction_nodes_coord
+        is_hv_mv = is_junc and G.degree(node) >= _HV_MV_CABIN_DEGREE_THRESHOLD
+        is_ext = node in external_nodes_coord
 
-def _drop_unconnected_islands(G: nx.Graph) -> nx.Graph:
-    safe_nodes = {node for component in nx.connected_components(G) 
-                  if _component_has_hv_mv_cabin(G, component) for node in component}
-    
-    return G.subgraph(safe_nodes).copy()
+        G.nodes[node][MV_LV_SUBSTATIONS] = is_sub and not is_hv_mv
+        G.nodes[node][HV_MV_CABIN] = is_hv_mv
+        G.nodes[node][JUNCTION] = is_junc
+        G.nodes[node][EXTERNAL_BOUNDARY] = is_ext
 
-def _component_has_hv_mv_cabin(G: nx.Graph, component: set) -> bool:
-    return any(G.nodes[node]["is_HV-MV_cabin"] for node in component)
 
 
 # ── Reporting ─────────────────────────────────────────────────────────────────
@@ -61,21 +65,21 @@ def report_graph_topology(G: nx.Graph) -> None:
 
     components = list(nx.connected_components(G))
 
-    MV_LV_substations = [n for n, d in G.nodes(data=True) if d.get("is_MV-LV_substation")]
-    HV_MV_substations = [n for n, d in G.nodes(data=True) if d.get("is_HV-MV_cabin")]
+    MV_LV_substations = [n for n, d in G.nodes(data=True) if d.get(MV_LV_SUBSTATIONS)]
+    HV_MV_substations = [n for n, d in G.nodes(data=True) if d.get(HV_MV_CABIN)]
 
     print(f"Nodes:                {G.number_of_nodes()}")
     print(f"Edges:                {G.number_of_edges()}")
     print(f"Connected components: {len(components)}")
-    print(f"MV/LV Substations:     {len(MV_LV_substations)}")
-    print(f"HV/MV Substations:     {len(HV_MV_substations)}")
+    print(f"MV/LV Substations:    {len(MV_LV_substations)}")
+    print(f"HV/MV Substations:    {len(HV_MV_substations)}")
+
 
 
 # ── Export ────────────────────────────────────────────────────────────────────
 
 def graph_edges_to_geodataframe(G: nx.Graph, category: str) -> gpd.GeoDataFrame:
     
-    edges = [data["geometry"] for _, _, data in G.edges(data=True) 
-             if "geometry" in data and (category is None or data.get("category") == category)]
+    edges = [data["geometry"] for _, _, data in G.edges(data=True) if "geometry" in data and (category is None or data.get("category") == category)]
     
     return gpd.GeoDataFrame(geometry=edges, crs="EPSG:2154").to_crs("EPSG:4326")

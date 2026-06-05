@@ -6,7 +6,7 @@ from shapely.strtree import STRtree
 from typing import cast
 
 SNAP_THRESHOLD_SUBSTATION_M = 5   
-SNAP_THRESHOLD_JUNCTION_M   = 20  
+SNAP_THRESHOLD_JUNCTION_M   = 5
 HTA_LINE_TYPE    = "reseau-souterrain-hta"
 
 
@@ -24,7 +24,7 @@ def load_hta_lines(path: str) -> gpd.GeoDataFrame:
 # ── Clipping ──────────────────────────────────────────────────────────────────
 
 def clip_substations_to_district(substations: gpd.GeoDataFrame,
-                                  district_boundary: gpd.GeoDataFrame) -> gpd.GeoDataFrame:
+                                 district_boundary: gpd.GeoDataFrame) -> gpd.GeoDataFrame:
     
     return (gpd.sjoin(substations, district_boundary[["geometry"]],how="inner", predicate="within").drop(columns="index_right"))
 
@@ -46,7 +46,7 @@ def _any_endpoint_inside(line_geom, polygon: Polygon) -> bool:
 
 def build_endpoint_snapping(lines: gpd.GeoDataFrame,
                             substations: gpd.GeoDataFrame,
-                            district_boundary: gpd.GeoDataFrame) -> tuple[gpd.GeoDataFrame, dict, gpd.GeoDataFrame, gpd.GeoDataFrame]:
+                            district_boundary: gpd.GeoDataFrame) -> tuple[gpd.GeoDataFrame, dict, set, set, set]:
 
     """
     Assigns a node key to every line endpoint inside the district.
@@ -68,10 +68,9 @@ def build_endpoint_snapping(lines: gpd.GeoDataFrame,
     lines_proj = _phase1_split_t_junctions(lines_proj, substations_proj, polygon)
     lines_proj = lines_proj.reset_index(drop=True)
  
-    endpoint_nodes, junction_nodes, orphan_points = _phase2_build_nodes(lines_proj, substations_proj, polygon)
+    endpoint_nodes, susbtation_node_coord, junction_node_coord, external_nodes_coord = _phase2_build_nodes(lines_proj, substations_proj, polygon)
  
-    return lines_proj.to_crs("EPSG:4326"), endpoint_nodes, junction_nodes, orphan_points
-
+    return lines_proj.to_crs("EPSG:4326"), endpoint_nodes, susbtation_node_coord, junction_node_coord, external_nodes_coord
 
 
 def _phase1_split_t_junctions(lines_proj: gpd.GeoDataFrame,
@@ -79,7 +78,7 @@ def _phase1_split_t_junctions(lines_proj: gpd.GeoDataFrame,
                               polygon: Polygon) -> gpd.GeoDataFrame:
 
     inside_endpoints      = _collect_inside_endpoints(lines_proj, polygon)
-    _, unsnapped          = _snap_to_substations(inside_endpoints, substations_proj)
+    _, unsnapped,_          = _snap_to_substations(inside_endpoints, substations_proj)
     _, orphan_keys        = _cluster_unsnapped(unsnapped, substations_proj)
  
     orphan_pts  = list(orphan_keys.values())
@@ -90,22 +89,22 @@ def _phase1_split_t_junctions(lines_proj: gpd.GeoDataFrame,
  
 def _phase2_build_nodes(lines_proj: gpd.GeoDataFrame,
                         substations_proj: gpd.GeoDataFrame,
-                        polygon: Polygon) -> tuple[dict, gpd.GeoDataFrame, gpd.GeoDataFrame]:
+                        polygon: Polygon) -> tuple[dict, set, set, set]:
 
-    inside_endpoints           = _collect_inside_endpoints(lines_proj, polygon)
-    endpoint_nodes, unsnapped  = _snap_to_substations(inside_endpoints, substations_proj)
-    junction_keys, final_orphans = _cluster_unsnapped(unsnapped, substations_proj)
-    endpoint_nodes.update(junction_keys)
+    inside_endpoints = _collect_inside_endpoints(lines_proj, polygon)
+    outisde_endpoints = _collect_outside_endpoints(lines_proj, polygon)
+    endpoint_nodes, unsnapped, susbtation_node_coord = _snap_to_substations(inside_endpoints, substations_proj)
+    junction_coord, final_orphans = _cluster_unsnapped(unsnapped, substations_proj)
+    endpoint_nodes, external_nodes_coord = _add_outside_endpoints(outisde_endpoints, endpoint_nodes)
+    endpoint_nodes.update(junction_coord)
  
-    junction_nodes = _to_geodataframe([Point(xy) for xy in set(junction_keys.values())], crs="EPSG:2154").to_crs("EPSG:4326")
- 
-    orphan_points = _to_geodataframe(list(final_orphans.values()), crs="EPSG:2154").to_crs("EPSG:4326")
- 
-    return endpoint_nodes, junction_nodes, orphan_points
+    junction_node_coord = set(junction_coord.values())
+
+    return endpoint_nodes, susbtation_node_coord, junction_node_coord, external_nodes_coord
  
 
 def _collect_inside_endpoints(lines: gpd.GeoDataFrame,
-                              polygon: Polygon,) -> list[tuple[int, str, Point]]:
+                              polygon: Polygon) -> list[tuple[int, str, Point]]:
 
     result = []
     for idx, geom in lines.geometry.items():
@@ -116,30 +115,44 @@ def _collect_inside_endpoints(lines: gpd.GeoDataFrame,
             result.append((idx, "end", end))
     return result
 
+def _collect_outside_endpoints(lines: gpd.GeoDataFrame,
+                               polygon: Polygon,) -> list[tuple[int, str, Point]]:
 
-def _snap_to_substations(
-    inside_endpoints: list[tuple[int, str, Point]],
-    substations_proj: gpd.GeoDataFrame) -> tuple[dict, list[tuple[int, str, Point]]]:
+    result = []
+    for idx, geom in lines.geometry.items():
+        start, end = _endpoints(geom)
+        start_inside = polygon.contains(start)
+        end_inside   = polygon.contains(end)
+
+        if start_inside and not end_inside:
+            result.append((idx, "end", end))
+        elif end_inside and not start_inside:
+            result.append((idx, "start", start))
+    return result
+
+def _snap_to_substations(inside_endpoints: list[tuple[int, str, Point]],
+                         substations_proj: gpd.GeoDataFrame) -> tuple[dict, list[tuple[int, str, Point]],set[tuple[float, float]]]:
 
     substation_tree = STRtree(substations_proj.geometry)
     endpoint_nodes  = {}
     unsnapped       = []
+    substation_node_coord = set()
 
     for line_idx, side, point in inside_endpoints:
         nearest_idx = substation_tree.nearest(point)
         nearest_pt  = cast(Point, substations_proj.geometry.iloc[nearest_idx])
         candidate_key = _round_coords(nearest_pt)
-        
 
         close_enough  = point.distance(nearest_pt) <= SNAP_THRESHOLD_SUBSTATION_M
         not_self_loop = not _already_snapped_to_same_node(line_idx, side, candidate_key, endpoint_nodes)
  
         if close_enough and not_self_loop:
             endpoint_nodes[(line_idx, side)] = candidate_key
+            substation_node_coord.add(candidate_key)
         else:
             unsnapped.append((line_idx, side, point))
  
-    return endpoint_nodes, unsnapped
+    return endpoint_nodes, unsnapped, substation_node_coord
 
 def _already_snapped_to_same_node(line_idx: int,
                                   side: str,
@@ -288,6 +301,19 @@ def _split_line(line_geom, split_point: Point) -> tuple:
     seg_a = LineString(coords[:insert_pos] + [split_coord])
     seg_b = LineString([split_coord] + coords[insert_pos:])
     return seg_a, seg_b
+
+def _add_outside_endpoints(outisde_endpoints: list[tuple[int, str, Point]],
+                           endpoint_nodes: dict)-> tuple[dict, set]:
+    
+    external_nodes_coord = set()
+
+    for line_idx, side, point in outisde_endpoints:
+        if (line_idx, side) not in endpoint_nodes:
+            coordinates = _round_coords(point)
+            endpoint_nodes[(line_idx, side)] = coordinates
+            external_nodes_coord.add(coordinates)
+
+    return endpoint_nodes, external_nodes_coord
 
 
 # ── Classification ────────────────────────────────────────────────────────────
