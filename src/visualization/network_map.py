@@ -18,7 +18,7 @@ def plot_network(district: gpd.GeoDataFrame,
     _plot_points(ax, G)
 
     ax.set_title("Quartier 5 — HTA Network", fontsize=14)
-    ax.legend()
+    ax.legend(markerscale=50)
 
     _save_figure("output/topology_check/network_map.png")
 
@@ -28,15 +28,15 @@ def _plot_district(ax,
                    district: gpd.GeoDataFrame,
                    district_boundary: gpd.GeoDataFrame) -> None:
     
-    district.plot(ax=ax, color="lightyellow", edgecolor="gray", linewidth=0.5)
-    district_boundary.plot(ax=ax, color="none", edgecolor="black", linewidth=1.5)
+    district.plot(ax=ax, color="lightyellow", edgecolor="gray", linewidth=0.1)
+    district_boundary.plot(ax=ax, color="none", edgecolor="black", linewidth=0.5)
 
 def _plot_lines(ax, G: nx.Graph) -> None:
     
     internal = graph_edges_to_geodataframe(G, category="internal")
-    internal.plot(ax=ax, color="steelblue", linewidth=0.1,label=f"Internal HTA lines ({len(internal)})")
+    internal.plot(ax=ax, color="steelblue", linewidth=0.05,label=f"Internal HTA lines ({len(internal)})")
     boundary = graph_edges_to_geodataframe(G, category="boundary")
-    boundary.plot(ax=ax, color="orange", linewidth=0.1,label=f"Boundary HTA lines ({len(internal)})")
+    boundary.plot(ax=ax, color="orange", linewidth=0.05,label=f"Boundary HTA lines ({len(boundary)})")
     
 
 def _plot_points(ax,G: nx.Graph) -> None:
@@ -47,13 +47,13 @@ def _plot_points(ax,G: nx.Graph) -> None:
     external_boundary_nodes = nodes_to_geodataframe(G, filter_key=EXTERNAL_BOUNDARY)
 
     if not mv_lv_substations.empty:
-        mv_lv_substations.plot(ax=ax, color="red", markersize=1, label=f"Substations ({len(mv_lv_substations)})")
+        mv_lv_substations.plot(ax=ax, color="red", markersize=0.1, marker=".", linewidth=0,  label=f"Substations ({len(mv_lv_substations)})")
     if not hv_mv_cabins.empty:
-        hv_mv_cabins.plot(ax=ax, color="orange", markersize=1, marker="*", label=f"HV/MV cabins ({len(hv_mv_cabins)})")
+        hv_mv_cabins.plot(ax=ax, color="orange", markersize=0.1, marker="*",linewidth=0, label=f"HV/MV cabins ({len(hv_mv_cabins)})")
     if not junction_nodes.empty:
-        junction_nodes.plot(ax=ax, color="purple", markersize=1, marker="^",label=f"Junction nodes ({len(junction_nodes)})")
+        junction_nodes.plot(ax=ax, color="purple", markersize=0.1, marker="^",linewidth=0, label=f"Junction nodes ({len(junction_nodes)})")
     if not external_boundary_nodes.empty:
-        external_boundary_nodes.plot(ax=ax, color="green", markersize=1,label=f"External nodes ({len(external_boundary_nodes)})")
+        external_boundary_nodes.plot(ax=ax, color="green", markersize=0.1, marker=".", linewidth=0, label=f"External nodes ({len(external_boundary_nodes)})")
 
 
 def nodes_to_geodataframe(G: nx.Graph, filter_key: str) -> gpd.GeoDataFrame:
@@ -64,5 +64,5 @@ def nodes_to_geodataframe(G: nx.Graph, filter_key: str) -> gpd.GeoDataFrame:
 
 def _save_figure(path: str) -> None:
     Path(path).parent.mkdir(parents=True, exist_ok=True)
-    plt.savefig(path, dpi=1000, bbox_inches="tight")
+    plt.savefig(path, dpi=4000, bbox_inches="tight")
     print(f"Map saved to {path}")

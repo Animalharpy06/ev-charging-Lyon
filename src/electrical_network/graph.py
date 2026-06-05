@@ -54,7 +54,7 @@ def _tag_nodes(G: nx.Graph,
 
         G.nodes[node][MV_LV_SUBSTATIONS] = is_sub and not is_hv_mv
         G.nodes[node][HV_MV_CABIN] = is_hv_mv
-        G.nodes[node][JUNCTION] = is_junc
+        G.nodes[node][JUNCTION] = is_junc and not is_hv_mv
         G.nodes[node][EXTERNAL_BOUNDARY] = is_ext
 
 

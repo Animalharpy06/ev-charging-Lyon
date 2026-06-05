@@ -53,13 +53,6 @@ def build_endpoint_snapping(lines: gpd.GeoDataFrame,
  
     Phase 1 — Snap endpoints to substations, then detect orphan endpoints and split any line at T-junctions where endpoints are present.
     Phase 2 — Rebuild endpoint_nodes fresh on the updated (split) lines.
- 
-    Returns
-    -------
-    lines          : gpd.GeoDataFrame  — updated lines with T-junction splits applied (EPSG:4326)
-    endpoint_nodes : dict[(line_idx, "start"|"end") -> (x, y)]
-    junction_nodes : gpd.GeoDataFrame  — centroid geometries of junction clusters (EPSG:4326)
-    orphan_points  : gpd.GeoDataFrame  — isolated orphan endpoint geometries (EPSG:4326)
     """
     lines_proj       = lines.to_crs("EPSG:2154")
     substations_proj = substations.to_crs("EPSG:2154")
