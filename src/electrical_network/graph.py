@@ -1,13 +1,12 @@
 import networkx as nx
 import geopandas as gpd
-from shapely.geometry import Point
 
 
 _HV_MV_CABIN_DEGREE_THRESHOLD = 10
 MV_LV_SUBSTATIONS = "MV-LV_substation"
 HV_MV_CABIN = "HV-MV_cabin"
 JUNCTION = "Junction"
-EXTERNAL_BOUNDARY  = "external_boundary_node"
+EXTERNAL_NODE  = "external_boundary_node"
 
 
 
@@ -20,11 +19,9 @@ def build_graph_from_snapping(lines: gpd.GeoDataFrame,
                               substations: gpd.GeoDataFrame,
                               external_nodes_coord: set) -> nx.Graph:
     
-    lines_proj = lines.to_crs("EPSG:2154")
-    substations_proj = substations.to_crs("EPSG:2154")
-
+    
     G = nx.Graph()
-    for idx, row in lines_proj.iterrows():
+    for idx, row in lines.iterrows():
         start_key = endpoint_nodes.get((idx, "start"))
         end_key   = endpoint_nodes.get((idx, "end"))
 
@@ -55,24 +52,25 @@ def _tag_nodes(G: nx.Graph,
         G.nodes[node][MV_LV_SUBSTATIONS] = is_sub and not is_hv_mv
         G.nodes[node][HV_MV_CABIN] = is_hv_mv
         G.nodes[node][JUNCTION] = is_junc and not is_hv_mv
-        G.nodes[node][EXTERNAL_BOUNDARY] = is_ext
-
+        G.nodes[node][EXTERNAL_NODE] = is_ext
 
 
 # ── Reporting ─────────────────────────────────────────────────────────────────
 
 def report_graph_topology(G: nx.Graph) -> None:
-
     components = list(nx.connected_components(G))
-
-    MV_LV_substations = [n for n, d in G.nodes(data=True) if d.get(MV_LV_SUBSTATIONS)]
-    HV_MV_substations = [n for n, d in G.nodes(data=True) if d.get(HV_MV_CABIN)]
+    mv_lv = [n for n, d in G.nodes(data=True) if d.get(MV_LV_SUBSTATIONS)]
+    hv_mv = [n for n, d in G.nodes(data=True) if d.get(HV_MV_CABIN)]
+    junc  = [n for n, d in G.nodes(data=True) if d.get(JUNCTION)]
+    ext   = [n for n, d in G.nodes(data=True) if d.get(EXTERNAL_NODE)]
 
     print(f"Nodes:                {G.number_of_nodes()}")
     print(f"Edges:                {G.number_of_edges()}")
     print(f"Connected components: {len(components)}")
-    print(f"MV/LV Substations:    {len(MV_LV_substations)}")
-    print(f"HV/MV Substations:    {len(HV_MV_substations)}")
+    print(f"MV/LV substations:    {len(mv_lv)}")
+    print(f"HV/MV cabins:         {len(hv_mv)}")
+    print(f"Junction nodes:       {len(junc)}")
+    print(f"External nodes:       {len(ext)}")
 
 
 
@@ -82,4 +80,4 @@ def graph_edges_to_geodataframe(G: nx.Graph, category: str) -> gpd.GeoDataFrame:
     
     edges = [data["geometry"] for _, _, data in G.edges(data=True) if "geometry" in data and (category is None or data.get("category") == category)]
     
-    return gpd.GeoDataFrame(geometry=edges, crs="EPSG:2154").to_crs("EPSG:4326")
+    return gpd.GeoDataFrame(geometry=edges, crs="EPSG:2154")

@@ -7,19 +7,17 @@ from typing import cast
 
 SNAP_THRESHOLD_SUBSTATION_M = 5   
 SNAP_THRESHOLD_JUNCTION_M   = 5
-HTA_LINE_TYPE    = "reseau-souterrain-hta"
-
+HTA_LINE_TYPE    = ["reseau-souterrain-hta","reseau-hta"]
 
 # ── Loading ───────────────────────────────────────────────────────────────────
 
 def load_substations(path: str) -> gpd.GeoDataFrame:
-    return gpd.read_file(path)
+    return gpd.read_file(path).to_crs("EPSG:2154")
 
 
-def load_hta_lines(path: str) -> gpd.GeoDataFrame:
-    lines = gpd.read_file(path)
-    return lines[lines["type"] == HTA_LINE_TYPE].copy()
-
+def load_lines(path: str) -> gpd.GeoDataFrame:
+    lines = gpd.read_file(path).to_crs("EPSG:2154")
+    return lines[lines["type"].isin(HTA_LINE_TYPE)].copy()
 
 # ── Clipping ──────────────────────────────────────────────────────────────────
 
@@ -54,16 +52,15 @@ def build_endpoint_snapping(lines: gpd.GeoDataFrame,
     Phase 1 — Snap endpoints to substations, then detect orphan endpoints and split any line at T-junctions where endpoints are present.
     Phase 2 — Rebuild endpoint_nodes fresh on the updated (split) lines.
     """
-    lines_proj       = lines.to_crs("EPSG:2154")
-    substations_proj = substations.to_crs("EPSG:2154")
-    polygon = cast(Polygon, district_boundary.to_crs("EPSG:2154").geometry.iloc[0])
+
+    polygon = cast(Polygon, district_boundary.geometry.iloc[0])
  
-    lines_proj = _phase1_split_t_junctions(lines_proj, substations_proj, polygon)
-    lines_proj = lines_proj.reset_index(drop=True)
+    lines = _phase1_split_t_junctions(lines, substations, polygon)
+    lines = lines.reset_index(drop=True)
  
-    endpoint_nodes, susbtation_node_coord, junction_node_coord, external_nodes_coord = _phase2_build_nodes(lines_proj, substations_proj, polygon)
+    endpoint_nodes, susbtation_node_coord, junction_node_coord, external_nodes_coord = _phase2_build_nodes(lines, substations, polygon)
  
-    return lines_proj.to_crs("EPSG:4326"), endpoint_nodes, susbtation_node_coord, junction_node_coord, external_nodes_coord
+    return lines, endpoint_nodes, susbtation_node_coord, junction_node_coord, external_nodes_coord
 
 
 def _phase1_split_t_junctions(lines_proj: gpd.GeoDataFrame,
@@ -321,9 +318,9 @@ def classify_lines(lines: gpd.GeoDataFrame,
       - orphan   : both endpoints inside but at least one could not be resolved
     """
     lines_proj = lines.to_crs("EPSG:2154")
-    polygon    = cast(Polygon, district_boundary.to_crs("EPSG:2154").geometry.iloc[0])
+    polygon    = cast(Polygon, district_boundary.geometry.iloc[0])
 
-    categories = [_line_category(idx, geom, endpoint_nodes, polygon) for idx, geom in lines_proj.geometry.items()]
+    categories = [_line_category(idx, geom, endpoint_nodes, polygon) for idx, geom in lines_proj.geometry.items()] # type: ignore
 
     lines = lines.copy()
     lines["category"] = categories

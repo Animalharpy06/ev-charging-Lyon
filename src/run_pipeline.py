@@ -4,7 +4,7 @@ import geopandas as gpd
 import networkx as nx
 
 from topology.district import load_district, save_district
-from electrical_network.network import (load_substations, load_hta_lines, 
+from electrical_network.network import (load_substations, load_lines, 
                                         clip_substations_to_district, clip_lines_to_district,
                                         build_endpoint_snapping, classify_lines, save)
 from electrical_network.graph import build_graph_from_snapping, report_graph_topology
@@ -61,24 +61,24 @@ def _compute_and_cache_substations(district_boundaries: gpd.GeoDataFrame) -> gpd
 def load_or_build_hta_lines(district_boundaries: gpd.GeoDataFrame,
                             substations_district: gpd.GeoDataFrame) -> tuple[gpd.GeoDataFrame, dict, set, set, set]:
     
-    if Path(_CACHE["hta_lines"]).exists():
-        print("Found existing file for thehta_lines. The snapping data is not cached, rebuilding from cached lines")
-        hta_lines_district = gpd.read_file(_CACHE["hta_lines"])
-        _, endpoint_nodes, sub_nodes, junc_nodes, ext_nodes = build_endpoint_snapping(hta_lines_district, substations_district, district_boundaries)
-        return hta_lines_district, endpoint_nodes, sub_nodes, junc_nodes, ext_nodes
-    return _compute_and_cache_hta_lines(district_boundaries, substations_district)
+    if Path(_CACHE["lines"]).exists():
+        print("Found existing file for the_lines. The snapping data is not cached, rebuilding from cached lines")
+        lines_district = gpd.read_file(_CACHE["lines"])
+        _, endpoint_nodes, sub_nodes, junc_nodes, ext_nodes = build_endpoint_snapping(lines_district, substations_district, district_boundaries)
+        return lines_district, endpoint_nodes, sub_nodes, junc_nodes, ext_nodes
+    return _compute_and_cache_lines(district_boundaries, substations_district)
 
 
-def _compute_and_cache_hta_lines(district_boundaries: gpd.GeoDataFrame, 
+def _compute_and_cache_lines(district_boundaries: gpd.GeoDataFrame, 
                                  substations_district: gpd.GeoDataFrame) -> tuple[gpd.GeoDataFrame, dict, set, set, set]:
     
-    hta_lines = load_hta_lines("data/electrical_network/enedis_nrj_energie.enedis_reseau.json")
-    hta_lines_district = clip_lines_to_district(hta_lines, district_boundaries)
+    lines = load_lines("data/electrical_network/enedis_nrj_energie.enedis_reseau.json")
+    lines_district = clip_lines_to_district(lines, district_boundaries)
 
-    hta_lines_district, endpoint_nodes, substation_nodes_coord, junction_nodes_coord, external_nodes_coord = build_endpoint_snapping(hta_lines_district, substations_district, district_boundaries)
-    hta_lines_district = classify_lines(hta_lines_district, endpoint_nodes, district_boundaries)
-    save(hta_lines_district, _CACHE["hta_lines"])
-    return hta_lines_district, endpoint_nodes, substation_nodes_coord, junction_nodes_coord, external_nodes_coord
+    lines_district, endpoint_nodes, substation_nodes_coord, junction_nodes_coord, external_nodes_coord = build_endpoint_snapping(lines_district, substations_district, district_boundaries)
+    lines_district = classify_lines(lines_district, endpoint_nodes, district_boundaries)
+    save(lines_district, _CACHE["lines"])
+    return lines_district, endpoint_nodes, substation_nodes_coord, junction_nodes_coord, external_nodes_coord
 
 
 # ── Step 4 ─────────────────────────────────────────────────────────────────────
@@ -89,20 +89,23 @@ def build_graph(hta_lines_district: gpd.GeoDataFrame,
                 junc_nodes: set,
                 substations_district: gpd.GeoDataFrame,
                 ext_nodes: set) -> nx.Graph:
-
-    return build_graph_from_snapping(hta_lines_district, endpoint_nodes, sub_nodes, junc_nodes, substations_district, ext_nodes)
+    G = build_graph_from_snapping(hta_lines_district, endpoint_nodes, sub_nodes,junc_nodes, substations_district, ext_nodes)
+    return G
 
 
 # ── Step 5 ─────────────────────────────────────────────────────────────────────
 
-def run_plot(district: gpd.GeoDataFrame, district_boundaries: gpd.GeoDataFrame, G: nx.Graph) -> None:
+def run_plot(district: gpd.GeoDataFrame,
+             district_boundaries: gpd.GeoDataFrame,
+             G: nx.Graph) -> None:
+    
     plot_network(district, district_boundaries, G)
 
 
+_CACHE = {"district": "cache/topology/district.geojson",
+          "substations": "cache/electrical_network/substations_district.geojson",
+          "lines": "cache/electrical_network/lines_district.geojson"}
 
-_CACHE = {"district":     "cache/topology/district.geojson",
-          "substations":  "cache/electrical_network/substations_district.geojson",
-          "hta_lines":    "cache/electrical_network/hta_lines_district.geojson"}
 
 if __name__ == "__main__":
     run_topology_check()
