@@ -1,92 +1,63 @@
-from pathlib import Path
-import json
+from __future__ import annotations
 
+import json
+from pathlib import Path
 import geopandas as gpd
 import pandas as pd
 
 
-_BUILDING_LAYER_CANDIDATES = [
-    "batiment_groupe",
-    "batiment_construction",
-    "batiment_groupe_geom",
-    "batiment_construction_geom"]
+_BUILDING_LAYER_CANDIDATES = ["batiment_construction", "batiment_groupe_compile"]
 
-_USEFUL_COLUMN_KEYWORDS = [
-    "id",
-    "rnb",
-    "adresse",
-    "geo",
-    "usage",
-    "log",
-    "surface",
-    "hauteur",
-    "chauff",
-    "dpe",
-    "energie",
-    "construction",
-    "annee"]
 
-def explore_referentiel_administratif(gpkg_path: str = "data/buildings/referentiel_administratif.gpkg") -> None:
-    layers = list_layers(Path(gpkg_path))
-    print("\n══ REFERENTIEL ADMINISTRATIF — LAYERS ══")
-    for layer in layers:
-        gdf = gpd.read_file(gpkg_path, layer=layer)
-        print(f"  {layer:<40} rows={len(gdf):<8} cols={len(gdf.columns):<5} crs={gdf.crs}")
+def explore_package(
+    gpkg_path: str,
+    district_path: str | None = None,
+    output_dir: str = "output/bdnb_audit") -> None:
 
-def analyze_bdnb_gpkg(gpkg_path: str,
-                      district_path: str | None = None,
-                      output_dir: str = "output/bdnb_audit") -> None:
     gpkg = Path(gpkg_path)
-    out = Path(output_dir)
-    out.mkdir(parents=True, exist_ok=True)
+    output = Path(output_dir)
+    output.mkdir(parents=True, exist_ok=True)
 
-    layers = list_layers(gpkg)
-    save_layers_summary(layers, out / "layers_summary.csv")
+    layer_names = list_layer_names(gpkg)
+    layer_profiles = [profile_layer(gpkg, layer_name) for layer_name in layer_names]
 
-    layer_reports = [analyze_layer(gpkg, layer_name) for layer_name in layers]
-    save_layer_reports(layer_reports, out / "layer_details.csv")
+    save_layer_inventory(layer_profiles, output / "layers_summary.csv")
+    save_column_inventory(layer_profiles, output / "columns_summary.csv")
 
-    building_layer = choose_building_layer(layers)
-    if building_layer is None:
-        print("No standard BDNB building layer found.")
-        print("Check output/bdnb_audit/layers_summary.csv and choose the correct layer manually.")
-        return
+    building_candidates = select_candidate_building_layers(layer_profiles)
+    save_building_candidates(building_candidates, output / "building_layer_candidates.csv")
 
-    buildings = load_layer(gpkg, building_layer)
-    save_building_schema(buildings, out / "building_schema.csv")
-    save_useful_columns(buildings, out / "building_useful_columns.csv")
+    for layer_name in building_candidates:
+        layer = load_layer(gpkg, layer_name)
+        save_layer_schema(layer, output / f"{layer_name}__schema.csv")
+        save_layer_sample(layer, output / f"{layer_name}__sample.csv")
 
-    print_basic_building_stats(buildings, building_layer)
-
-    if district_path is not None:
-        district = gpd.read_file(district_path)
-        clipped = clip_to_district(buildings, district)
-        save_clipped_summary(clipped, out / "district_building_summary.json")
-        save_clipped_sample(clipped, out / "district_building_sample.geojson")
-        print_district_stats(clipped)
+        if district_path is not None and is_geospatial(layer):
+            district = load_district(district_path, layer.crs)
+            clipped = clip_layer_to_district(layer, district)
+            save_clipped_summary(clipped, output / f"{layer_name}__district_summary.json")
+            save_clipped_sample(clipped, output / f"{layer_name}__district_sample.geojson")
 
 
-def list_layers(gpkg_path: Path) -> list[str]:
+def list_layer_names(gpkg_path: Path) -> list[str]:
     layers = gpd.list_layers(gpkg_path)
     return layers["name"].tolist()
 
 
-def save_layers_summary(layers: list[str], output_path: Path) -> None:
-    pd.DataFrame({"layer_name": layers}).to_csv(output_path, index=False)
-
-
-def analyze_layer(gpkg_path: Path, layer_name: str) -> dict:
-    layer = gpd.read_file(gpkg_path, layer=layer_name)
-
-    is_geospatial = isinstance(layer, gpd.GeoDataFrame) and "geometry" in layer.columns
+def profile_layer(gpkg_path: Path, layer_name: str) -> dict:
+    layer = load_layer(gpkg_path, layer_name)
+    geometry_types = summarize_geometry_types(layer)
+    bounds = summarize_bounds(layer)
 
     return {
         "layer_name": layer_name,
         "rows": len(layer),
         "columns": len(layer.columns),
-        "is_geospatial": is_geospatial,
-        "crs": str(layer.crs) if is_geospatial else "",
-        "geometry_types": geometry_type_summary(layer) if is_geospatial else "",
+        "is_geospatial": is_geospatial(layer),
+        "crs": str(layer.crs) if is_geospatial(layer) else "",
+        "geometry_column": layer.geometry.name if is_geospatial(layer) else "",
+        "geometry_types": json.dumps(geometry_types, ensure_ascii=False),
+        "total_bounds": json.dumps(bounds, ensure_ascii=False) if bounds else "",
     }
 
 
@@ -94,41 +65,64 @@ def load_layer(gpkg_path: Path, layer_name: str) -> gpd.GeoDataFrame:
     return gpd.read_file(gpkg_path, layer=layer_name)
 
 
-def geometry_type_summary(layer: pd.DataFrame) -> str:
-    if not isinstance(layer, gpd.GeoDataFrame):
-        return ""
-    if "geometry" not in layer.columns:
-        return ""
-    return json.dumps(layer.geom_type.value_counts(dropna=False).to_dict(), ensure_ascii=False)
+def is_geospatial(frame: pd.DataFrame) -> bool:
+    return isinstance(frame, gpd.GeoDataFrame) and "geometry" in frame.columns
 
 
-def save_layer_reports(reports: list[dict], output_path: Path) -> None:
-    pd.DataFrame(reports).to_csv(output_path, index=False)
+def summarize_geometry_types(layer: pd.DataFrame) -> dict[str, int]:
+    if not is_geospatial(layer):
+        return {}
+    counts = layer.geom_type.value_counts(dropna=False).to_dict()
+    return {str(key): int(value) for key, value in counts.items()}
 
 
-def choose_building_layer(layers: list[str]) -> str | None:
-    lower_to_original = {layer.lower(): layer for layer in layers}
-
-    for candidate in _BUILDING_LAYER_CANDIDATES:
-        if candidate in lower_to_original:
-            return lower_to_original[candidate]
-
-    for layer in layers:
-        if "batiment" in layer.lower():
-            return layer
-
-    return None
+def summarize_bounds(layer: pd.DataFrame) -> list[float] | None:
+    if not is_geospatial(layer):
+        return None
+    if layer.empty:
+        return None
+    bounds = layer.total_bounds.tolist()
+    return [float(value) for value in bounds]
 
 
-def save_building_schema(buildings: gpd.GeoDataFrame, output_path: Path) -> None:
-    schema = pd.DataFrame({
-        "column": buildings.columns,
-        "dtype": [str(buildings[col].dtype) for col in buildings.columns],
-        "non_null_count": [int(buildings[col].notna().sum()) for col in buildings.columns],
-        "null_count": [int(buildings[col].isna().sum()) for col in buildings.columns],
-        "n_unique": [safe_nunique(buildings[col]) for col in buildings.columns],
-    })
-    schema.to_csv(output_path, index=False)
+def save_layer_inventory(layer_profiles: list[dict], output_path: Path) -> None:
+    pd.DataFrame(layer_profiles).to_csv(output_path, index=False)
+
+
+def save_column_inventory(layer_profiles: list[dict], output_path: Path) -> None:
+    rows: list[dict] = []
+
+    for profile in layer_profiles:
+        layer_name = profile["layer_name"]
+        gpkg_path = Path(profile.get("gpkg_path", "")) if "gpkg_path" in profile else None
+        if gpkg_path is None or not gpkg_path.exists():
+            continue
+
+        layer = load_layer(gpkg_path, layer_name)
+        rows.extend(profile_columns(layer_name, layer))
+
+    pd.DataFrame(rows).to_csv(output_path, index=False)
+
+
+def profile_columns(layer_name: str, layer: pd.DataFrame) -> list[dict]:
+    rows = []
+
+    for column in layer.columns:
+        series = layer[column]
+        rows.append(
+            {
+                "layer_name": layer_name,
+                "column": column,
+                "dtype": str(series.dtype),
+                "non_null_count": int(series.notna().sum()),
+                "null_count": int(series.isna().sum()),
+                "null_share": float(series.isna().mean()),
+                "n_unique": safe_nunique(series),
+                "sample_values": json.dumps(sample_values(series), ensure_ascii=False),
+            }
+        )
+
+    return rows
 
 
 def safe_nunique(series: pd.Series) -> int | None:
@@ -138,34 +132,74 @@ def safe_nunique(series: pd.Series) -> int | None:
         return None
 
 
-def save_useful_columns(buildings: gpd.GeoDataFrame, output_path: Path) -> None:
-    useful = [
-        col for col in buildings.columns
-        if any(keyword in col.lower() for keyword in _USEFUL_COLUMN_KEYWORDS)
-    ]
-    pd.DataFrame({"column": useful}).to_csv(output_path, index=False)
+def sample_values(series: pd.Series, n: int = 5) -> list[str]:
+    non_null = series.dropna()
+
+    if non_null.empty:
+        return []
+
+    try:
+        unique_values = pd.unique(non_null)
+    except TypeError:
+        return []
+
+    values = [stringify_value(value) for value in unique_values[:n]]
+    return values
 
 
-def print_basic_building_stats(buildings: gpd.GeoDataFrame, layer_name: str) -> None:
-    print(f"Building layer:       {layer_name}")
-    print(f"Rows:                 {len(buildings)}")
-    print(f"Columns:              {len(buildings.columns)}")
-    print(f"CRS:                  {buildings.crs if isinstance(buildings, gpd.GeoDataFrame) else 'N/A'}")
-
-    if isinstance(buildings, gpd.GeoDataFrame) and "geometry" in buildings.columns:
-        print(f"Geometry types:       {buildings.geom_type.value_counts(dropna=False).to_dict()}")
-        print(f"Valid geometries:     {int(buildings.geometry.is_valid.sum())}")
-        print(f"Invalid geometries:   {int((~buildings.geometry.is_valid).sum())}")
+def stringify_value(value: object) -> str:
+    text = str(value)
+    return text[:200]
 
 
-def clip_to_district(buildings: gpd.GeoDataFrame,
-                     district: gpd.GeoDataFrame) -> gpd.GeoDataFrame:
-    if buildings.crs != district.crs:
-        district = district.to_crs(buildings.crs)
+def select_candidate_building_layers(layer_profiles: list[dict]) -> list[str]:
+    layer_names = [profile["layer_name"] for profile in layer_profiles]
+    lower_to_original = {name.lower(): name for name in layer_names}
 
-    # We use intersects rather than within to avoid dropping buildings that touch
-    # the study boundary exactly; boundary cases matter for later building-to-node assignment.
-    clipped = gpd.sjoin(buildings, district[["geometry"]], how="inner", predicate="intersects").drop(columns="index_right")
+    exact_matches = [lower_to_original[name] for name in _BUILDING_LAYER_CANDIDATES if name in lower_to_original]
+
+    if exact_matches:
+        return exact_matches
+    
+    fallback_matches = [name for name in layer_names if "batiment" in name.lower()]
+    return fallback_matches
+
+
+def save_building_candidates(layer_names: list[str], output_path: Path) -> None:
+    pd.DataFrame({"layer_name": layer_names}).to_csv(output_path, index=False)
+
+
+def save_layer_schema(layer: pd.DataFrame, output_path: Path) -> None:
+    schema = pd.DataFrame(profile_columns("current_layer", layer))
+    schema = schema.drop(columns="layer_name")
+    schema.to_csv(output_path, index=False)
+
+
+def save_layer_sample(layer: pd.DataFrame, output_path: Path, n: int = 20) -> None:
+    sample = layer.head(n).copy()
+
+    if is_geospatial(sample):
+        sample = pd.DataFrame(sample.drop(columns="geometry"))
+
+    sample.to_csv(output_path, index=False)
+
+
+def load_district(district_path: str, target_crs: object) -> gpd.GeoDataFrame:
+    district = gpd.read_file(district_path)
+    if target_crs is not None and district.crs != target_crs:
+        district = district.to_crs(target_crs)
+    return district
+
+
+def clip_layer_to_district(
+    layer: gpd.GeoDataFrame,
+    district: gpd.GeoDataFrame) -> gpd.GeoDataFrame:
+    clipped = gpd.sjoin(
+        layer,
+        district[["geometry"]],
+        how="inner",
+        predicate="intersects",
+    ).drop(columns="index_right")
 
     return clipped[~clipped.index.duplicated(keep="first")].copy()
 
@@ -175,42 +209,16 @@ def save_clipped_summary(clipped: gpd.GeoDataFrame, output_path: Path) -> None:
         "rows": int(len(clipped)),
         "columns": int(len(clipped.columns)),
         "crs": str(clipped.crs),
-        "geometry_types": clipped.geom_type.value_counts(dropna=False).to_dict(),
+        "geometry_types": summarize_geometry_types(clipped),
         "valid_geometries": int(clipped.geometry.is_valid.sum()),
-        "invalid_geometries": int((~clipped.geometry.is_valid).sum())}
+        "invalid_geometries": int((~clipped.geometry.is_valid).sum()),
+    }
     output_path.write_text(json.dumps(summary, indent=2, ensure_ascii=False), encoding="utf-8")
 
 
 def save_clipped_sample(clipped: gpd.GeoDataFrame, output_path: Path, n: int = 2000) -> None:
-    sample = clipped.head(n).copy()
-    sample.to_file(output_path, driver="GeoJSON")
-
-
-def print_district_stats(clipped: gpd.GeoDataFrame) -> None:
-    print("")
-    print("District subset")
-    print(f"Rows:                 {len(clipped)}")
-    print(f"Geometry types:       {clipped.geom_type.value_counts(dropna=False).to_dict()}")
-    print(f"Valid geometries:     {int(clipped.geometry.is_valid.sum())}")
-    print(f"Invalid geometries:   {int((~clipped.geometry.is_valid).sum())}")
-
-def explore_iris_district(path: str = "data/topology/iris_lyon.geojson") -> None:
-    iris = gpd.read_file(path)
-    print("\n══ IRIS DISTRICT ══")
-    print(f"Rows:    {len(iris)}")
-    print(f"CRS:     {iris.crs}")
-    print(f"Columns: {iris.columns.tolist()}")
-    print(f"\nFirst 5 rows:")
-    print(iris.drop(columns="geometry").head())
-
-def explore_bdnb_iris(path: str = "data/buildings/referentiel_administratif.gpkg") -> None:
-    iris = gpd.read_file(path, layer="iris")
-    print(iris.columns.tolist())
-    print(iris.head(3).drop(columns="geometry"))
+    clipped.head(n).to_file(output_path, driver="GeoJSON")
 
 
 if __name__ == "__main__":
-    #analyze_bdnb_gpkg(gpkg_path="data/buildings/bdnb.gpkg", district_path="cache/topology/district.geojson", output_dir="output/bdnb_audit")
-    #explore_referentiel_administratif()
-    explore_iris_district()
-    explore_bdnb_iris()
+    explore_package("data/buildings/bdnb.gpkg","data/topology/iris_lyon.geojson")

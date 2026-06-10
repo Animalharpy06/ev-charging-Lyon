@@ -55,6 +55,14 @@ def _tag_nodes(G: nx.Graph,
         G.nodes[node][EXTERNAL_NODE] = is_ext
 
 
+def keep_main_component(G: nx.Graph) -> nx.Graph:
+    main_component = extract_main_component(G)
+    return G.subgraph(main_component).copy()
+
+
+def extract_main_component(G: nx.Graph) -> set:
+    return max(nx.connected_components(G), key=len)
+
 # ── Reporting ─────────────────────────────────────────────────────────────────
 
 def report_graph_topology(G: nx.Graph) -> None:

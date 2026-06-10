@@ -361,9 +361,6 @@ def _centroid_of_points(points: list[Point]) -> Point:
     y = sum(p.y for p in points) / len(points)
     return Point(x, y)
 
-def _to_geodataframe(points: list[Point], crs: str) -> gpd.GeoDataFrame:
-    return gpd.GeoDataFrame(geometry=points, crs=crs)
-
 def _near_substation(point: Point, substation_tree: STRtree) -> bool:
     nearest_idx = substation_tree.nearest(point)
     nearest_pt  = substation_tree.geometries[nearest_idx]
