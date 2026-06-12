@@ -5,7 +5,7 @@ import networkx as nx
 from shapely.geometry import Point
 
 from electrical_network.graph import (graph_edges_to_geodataframe,
-                                      MV_LV_SUBSTATIONS, HV_MV_CABIN, JUNCTION, EXTERNAL_NODE)
+                                      MV_LV_SUBSTATIONS, HV_MV_CABIN, JUNCTION, EXTERNAL_NODE, ORPHAN)
 
 
 def plot_network(district: gpd.GeoDataFrame,
@@ -59,8 +59,9 @@ def _plot_line_category(ax,
 def _plot_graph_nodes(ax, G: nx.Graph) -> None:
     _plot_node_type(ax, G, MV_LV_SUBSTATIONS, color="red",    marker=".", label_prefix="MV/LV substations")
     _plot_node_type(ax, G, HV_MV_CABIN,       color="orange", marker="*", label_prefix="HV/MV cabins")
-    _plot_node_type(ax, G, JUNCTION,          color="purple", marker="^", label_prefix="Junction nodes")
+    _plot_node_type(ax, G, JUNCTION,          color="purple", marker="^", label_prefix="Junction nodes", markersize=0.01)
     _plot_node_type(ax, G, EXTERNAL_NODE, color="green",  marker=".", label_prefix="External nodes")
+    _plot_node_type(ax, G, ORPHAN, color="cyan",  marker=".", label_prefix="Orphan", markersize=0.05)
 
 
 def _plot_node_type(ax,
@@ -68,12 +69,13 @@ def _plot_node_type(ax,
                     filter_key: str,
                     color: str,
                     marker: str,
-                    label_prefix: str) -> None:
+                    label_prefix: str,
+                    markersize=0.1) -> None:
     
     gdf = nodes_to_geodataframe(G, filter_key)
     if gdf.empty:
         return
-    gdf.plot(ax=ax, color=color, markersize=0.1, marker=marker, linewidth=0, label=f"{label_prefix} ({len(gdf)})")
+    gdf.plot(ax=ax, color=color, markersize=markersize, marker=marker, linewidth=0, label=f"{label_prefix} ({len(gdf)})")
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
 

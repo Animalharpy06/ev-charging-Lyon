@@ -8,6 +8,55 @@ import pandas as pd
 
 _BUILDING_LAYER_CANDIDATES = ["batiment_construction", "batiment_groupe_compile"]
 
+_COLUMNS_TO_AUDIT = [
+    "bdtopo_bat_l_usage_1",
+    "bdtopo_bat_l_usage_2",
+    "bdtopo_bat_l_nature",
+    "usage_principal_bdnb_open",
+    "ffo_bat_usage_niveau_1_txt",
+    "ffo_bat_annee_construction",
+    "dpe_mix_arrete_annee_construction_dpe",
+    "rnc_l_annee_construction",
+    "rpls_l_annee_construction",
+    "dpe_mix_arrete_periode_construction_dpe",
+    "rnc_periode_construction_max"]
+
+
+def audit_classification_columns(gpkg_path: str,
+                                 output_dir: str = "output/bdnb_audit",
+                                 layer_name: str = "batiment_groupe_compile") -> None:
+
+    output = Path(output_dir)
+    output.mkdir(parents=True, exist_ok=True)
+
+    layer = gpd.read_file(gpkg_path, layer=layer_name, ignore_geometry=True)
+
+    available = [c for c in _COLUMNS_TO_AUDIT if c in layer.columns]
+    missing = sorted(set(_COLUMNS_TO_AUDIT) - set(available))
+
+    if missing:
+        print(f"[WARN] Colonne non trovate nel layer: {missing}")
+
+    rows = []
+    for column in available:
+        unique_values = _extract_unique_values(layer[column])
+        for value in unique_values:
+            rows.append({"column": column, "value": value})
+
+    output_path = output / f"{layer_name}__unique_classification_values.csv"
+    pd.DataFrame(rows).to_csv(output_path, index=False)
+    print(f"[OK] Salvati {len(rows)} valori unici in: {output_path}")
+
+
+def _extract_unique_values(series: pd.Series) -> list[str]:
+    non_null = series.dropna()
+
+    try:
+        unique_raw = sorted(pd.unique(non_null).tolist(), key=str)
+    except TypeError:
+        unique_raw = pd.unique(non_null).tolist()
+
+    return [str(v) for v in unique_raw]
 
 def explore_package(
     gpkg_path: str,
@@ -221,4 +270,5 @@ def save_clipped_sample(clipped: gpd.GeoDataFrame, output_path: Path, n: int = 2
 
 
 if __name__ == "__main__":
-    explore_package("data/buildings/bdnb.gpkg","data/topology/iris_lyon.geojson")
+    #explore_package("data/buildings/bdnb.gpkg","data/topology/iris_lyon.geojson")
+    audit_classification_columns(gpkg_path="data/buildings/bdnb.gpkg", output_dir="output/bdnb_audit")
