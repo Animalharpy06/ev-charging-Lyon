@@ -1,4 +1,27 @@
+# ── Geospaziale ───────────────────────────────────────────────────────────────
+# geopandas porta con sé: pandas, numpy, shapely, pyproj, fiona
 geopandas
 shapely
-matplotlib
+
+# ── Grafo ─────────────────────────────────────────────────────────────────────
+networkx
+
+# ── Algoritmi spaziali ────────────────────────────────────────────────────────
 scipy
+
+# ── Dati meteo (ERA5 / GRIB) ──────────────────────────────────────────────────
+xarray
+cfgrib
+# NOTA: cfgrib richiede la libreria C eccodes.
+#   Su conda (raccomandato):  conda install -c conda-forge cfgrib
+#   Su Linux (pip):           sudo apt install libeccodes-dev && pip install cfgrib
+#   Su macOS (pip):           brew install eccodes && pip install cfgrib
+
+# ── Domanda energetica degli edifici (profili BDEW) ───────────────────────────
+demandlib
+
+# ── Visualizzazione ───────────────────────────────────────────────────────────
+matplotlib
+
+# ── Ottimizzazione (fase futura — richiede licenza Gurobi) ───────────────────
+# gurobipy

@@ -44,7 +44,7 @@ def _any_endpoint_inside(line_geom, polygon: Polygon) -> bool:
 
 def build_endpoint_snapping(lines: gpd.GeoDataFrame,
                             substations: gpd.GeoDataFrame,
-                            district_boundary: gpd.GeoDataFrame) -> tuple[gpd.GeoDataFrame, dict, set, set, set, set]:
+                            district_boundary: gpd.GeoDataFrame) -> tuple[gpd.GeoDataFrame, dict, set, set, set]:
 
     """
     Assigns a node key to every line endpoint inside the district.
@@ -58,9 +58,9 @@ def build_endpoint_snapping(lines: gpd.GeoDataFrame,
     lines = _phase1_split_t_junctions(lines, substations, polygon)
     lines = lines.reset_index(drop=True)
  
-    endpoint_nodes, susbtation_node_coord, junction_node_coord, external_nodes_coord, orphan_nodes_coord = _phase2_build_nodes(lines, substations, polygon)
+    endpoint_nodes, substation_node_coord, junction_node_coord, orphan_nodes_coord = _phase2_build_nodes(lines, substations, polygon)
  
-    return lines, endpoint_nodes, susbtation_node_coord, junction_node_coord, external_nodes_coord, orphan_nodes_coord
+    return lines, endpoint_nodes, substation_node_coord, junction_node_coord, orphan_nodes_coord
 
 
 def _phase1_split_t_junctions(lines_proj: gpd.GeoDataFrame,
@@ -79,22 +79,19 @@ def _phase1_split_t_junctions(lines_proj: gpd.GeoDataFrame,
  
 def _phase2_build_nodes(lines_proj: gpd.GeoDataFrame,
                         substations_proj: gpd.GeoDataFrame,
-                        polygon: Polygon) -> tuple[dict, set, set, set, set]:
+                        polygon: Polygon) -> tuple[dict, set, set, set]:
 
     inside_endpoints = _collect_inside_endpoints(lines_proj, polygon)
     outisde_endpoints = _collect_outside_endpoints(lines_proj, polygon)
-    endpoint_nodes, unsnapped, susbtation_node_coord = _snap_to_substations(inside_endpoints, substations_proj)
+    endpoint_nodes, unsnapped, substation_node_coord = _snap_to_substations(inside_endpoints, substations_proj)
     junction_coord, final_orphans = _cluster_unsnapped(unsnapped, substations_proj)
     endpoint_nodes.update(junction_coord)
     endpoint_nodes.update(final_orphans)
-    endpoint_nodes, external_nodes_coord = _add_outside_endpoints(outisde_endpoints, endpoint_nodes)
     
     junction_node_coord = set(junction_coord.values())
     final_orphans_coord = set(final_orphans.values())
-    print(f"junction_coord size: {len(junction_coord)}")
-    print(f"final_orphans size:  {len(final_orphans)}")
 
-    return endpoint_nodes, susbtation_node_coord, junction_node_coord, external_nodes_coord, final_orphans_coord
+    return endpoint_nodes, substation_node_coord, junction_node_coord, final_orphans_coord
  
 
 def _collect_inside_endpoints(lines: gpd.GeoDataFrame,

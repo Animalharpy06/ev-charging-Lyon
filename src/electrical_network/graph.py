@@ -17,7 +17,6 @@ def build_graph_from_snapping(lines: gpd.GeoDataFrame,
                               endpoint_nodes: dict,
                               substation_nodes_keys: set,
                               junction_nodes_coord: set,
-                              external_nodes_coord: set,
                               orphan_nodes_coord:set) -> nx.Graph:
     
     G = nx.Graph()
@@ -32,8 +31,7 @@ def build_graph_from_snapping(lines: gpd.GeoDataFrame,
 
         category = row.get("category", "unknown")
         G.add_edge(start_key, end_key, geometry=row.geometry, category=category)
-    print(f"N. of orphan endpoints:{len(orphan_nodes_coord)}")
-    _tag_nodes(G, substation_nodes_keys, junction_nodes_coord, external_nodes_coord, orphan_nodes_coord)
+    _tag_nodes(G, substation_nodes_keys, junction_nodes_coord, orphan_nodes_coord)
     
     return G
 
@@ -41,20 +39,17 @@ def build_graph_from_snapping(lines: gpd.GeoDataFrame,
 def _tag_nodes(G: nx.Graph, 
                substation_nodes_coord: set,
                junction_nodes_coord: set,
-               external_nodes_coord:set,
                orphan_nodes_coord:set) -> None:
     
     for node in G.nodes:
         is_sub = node in substation_nodes_coord
         is_junc = node in junction_nodes_coord
         is_hv_mv = is_junc and G.degree(node) >= _HV_MV_CABIN_DEGREE_THRESHOLD
-        is_ext = node in external_nodes_coord
         is_known = node in orphan_nodes_coord
 
         G.nodes[node][MV_LV_SUBSTATIONS] = is_sub and not is_hv_mv
         G.nodes[node][HV_MV_CABIN] = is_hv_mv
         G.nodes[node][JUNCTION] = is_junc and not is_hv_mv
-        G.nodes[node][EXTERNAL_NODE] = is_ext
         G.nodes[node][ORPHAN] = is_known
 
 

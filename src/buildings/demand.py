@@ -17,12 +17,9 @@ _BDEW_BUILDING_CLASS: dict[str, int] = {"old": 1, "mid": 5, "recent": 9}
 _ALL_CLASSES: list[tuple[str, str]] = list(_SPECIFIC_DEMAND.keys())
 
 
-def build_demand_profiles(buildings: pd.DataFrame,
-                          temperature_15min: pd.Series,
-                          year: int = 2025,
-                          holidays=None) -> dict[str, pd.DataFrame]:
-
-    index_15min = _full_year_index(year)
+def build_demand_profiles(buildings, temperature_15min, year=2025, holidays=None):
+    index_15min      = _full_year_index(year)
+    march_index      = _march_day_index(year)
     unit_elec_curves = _build_unit_electrical_curves(year, holidays)
     unit_heat_curves = _build_unit_thermal_curves(temperature_15min, index_15min)
 
@@ -34,12 +31,18 @@ def build_demand_profiles(buildings: pd.DataFrame,
         age_class = _age_class(row.ffo_bat_annee_construction)
         volume_m3 = float(row.s_geom_groupe) * float(row.bdtopo_bat_hauteur_mean)
         annual    = _annual_demand(volume_m3, use, age_class)
+        building_id = str(row.batiment_groupe_id)
 
-        elec_columns[row.batiment_groupe_id] = unit_elec_curves[(use, age_class)] * annual["electricity"]
-        heat_columns[row.batiment_groupe_id] = unit_heat_curves[(use, age_class)] * annual["heating"]
+        elec_columns[building_id] = unit_elec_curves[(use, age_class)] * annual["electricity"]
+        heat_columns[building_id] = unit_heat_curves[(use, age_class)] * annual["heating"]
 
-    return {"electricity": pd.DataFrame(elec_columns, index=range(96)),
-            "heat":        pd.DataFrame(heat_columns, index=range(96))}
+    return {"electricity": pd.DataFrame(elec_columns, index=march_index),
+            "heat":        pd.DataFrame(heat_columns, index=march_index)}
+
+
+def _march_day_index(year: int) -> pd.DatetimeIndex:
+    start = pd.Timestamp(year=year, month=3, day=_MARCH_TYPICAL_DAY)
+    return pd.date_range(start, periods=96, freq="15min")
 
 
 # ── Unit curves (computed once per class, scaled per building) ────────────────

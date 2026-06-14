@@ -88,5 +88,5 @@ def nodes_to_geodataframe(G: nx.Graph, filter_key: str) -> gpd.GeoDataFrame:
 
 def _save_figure(path: str) -> None:
     Path(path).parent.mkdir(parents=True, exist_ok=True)
-    plt.savefig(path, dpi=3000, bbox_inches="tight")
+    plt.savefig(path, dpi=2000, bbox_inches="tight")
     print(f"Map saved to {path}")
